@@ -1,4 +1,4 @@
-ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-python:3.11-alpine3.18
+ARG BUILD_FROM=python:3.11-alpine
 FROM ${BUILD_FROM}
 
 ENV PYTHONUNBUFFERED=1
@@ -19,4 +19,4 @@ COPY run.sh /app/run.sh
 
 RUN chmod +x /app/run.sh
 
-CMD ["/app/run.sh"]
+ENTRYPOINT ["/app/run.sh"]
