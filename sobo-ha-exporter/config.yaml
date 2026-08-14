@@ -1,6 +1,6 @@
 name: "Sobo HA Exporter"
 version: "0.3.2"
-slug: "sobo_ha_exporter"
+slug: "sobo-ha-exporter"
 description: >-
   Exports a sanitized reference model of your Home Assistant setup to GitHub
   for AI context
