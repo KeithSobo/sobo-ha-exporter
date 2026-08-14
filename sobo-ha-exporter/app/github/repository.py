@@ -7,7 +7,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 MARKER_FILENAME = ".sobo-ha-exporter"
-EXPORTER_MANAGED_DIRS = ["inventory", "summaries", "references", "config", "metadata"]
+EXPORTER_MANAGED_DIRS = ["inventory", "summaries", "references", "config", "metadata", "ai"]
 SAFE_INITIAL_FILES = {
     "readme.md",
     "license",

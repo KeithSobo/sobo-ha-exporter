@@ -205,3 +205,21 @@ def test_collect_automations_and_configuration_files(tmp_path):
     cfg_files = collect_configuration_files(config_dir)
     assert "configuration.yaml" in cfg_files
     assert "automations.yaml" in cfg_files
+
+
+def test_device_entities_population_sorted_and_deduplicated():
+    mock_client = MagicMock()
+    mock_client.get_device_registry.return_value = [
+        {"id": "dev1", "name": "Multi Entity Device", "area_id": "garage"}
+    ]
+
+    entities = [
+        EntityModel(entity_id="sensor.temp_z", device_id="dev1", platform="zha"),
+        EntityModel(entity_id="sensor.temp_a", device_id="dev1", platform="zha"),
+        EntityModel(entity_id="sensor.temp_a", device_id="dev1", platform="zha"),
+    ]
+
+    devices = collect_devices(client=mock_client, entities=entities)
+    assert len(devices) == 1
+    d = devices[0]
+    assert d.entities == ["sensor.temp_a", "sensor.temp_z"]

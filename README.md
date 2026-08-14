@@ -103,6 +103,21 @@ git:
 ```text
 ha-reference/
 ├── README.md
+├── ai/
+│   ├── README.md
+│   ├── overview.md
+│   ├── areas.md
+│   ├── devices-by-area.md
+│   ├── entities-by-domain.md
+│   ├── helpers.md
+│   ├── automations.md
+│   ├── scripts.md
+│   ├── integrations.md
+│   ├── labels.md
+│   ├── dashboards.md
+│   ├── orphaned-and-unassigned.md
+│   ├── impact-index.json
+│   └── search-index.json
 ├── inventory/
 │   ├── entities.json
 │   ├── devices.json
@@ -132,7 +147,7 @@ ha-reference/
 
 ## Security & Privacy Principles
 
-- `/config` directory is mounted **read-only**.
+- Home Assistant `/homeassistant` configuration directory is mounted **read-only**.
 - `.storage/`, `secrets.yaml`, `.cloud/`, `.auth`, `*.db`, and log files are **never** exported.
 - High-entropy secrets and key materials trigger export abortion before `git commit`.
 - SSH host key verification is enforced (`known_hosts`).

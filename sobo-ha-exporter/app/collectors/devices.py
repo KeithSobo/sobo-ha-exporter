@@ -29,12 +29,15 @@ def collect_devices(
     logger.info("Collecting device models from Home Assistant...")
     area_map = area_name_map or {}
 
-    # Map device_id to unique entity platforms
+    # Map device_id to unique entity platforms and associated entity IDs
     dev_platforms: dict[str, set[str]] = {}
+    dev_entities: dict[str, set[str]] = {}
     if entities:
         for ent in entities:
-            if ent.device_id and ent.platform:
-                dev_platforms.setdefault(ent.device_id, set()).add(ent.platform)
+            if ent.device_id:
+                dev_entities.setdefault(ent.device_id, set()).add(ent.entity_id)
+                if ent.platform:
+                    dev_platforms.setdefault(ent.device_id, set()).add(ent.platform)
 
     device_reg = client.get_device_registry()
     devices: list[DeviceModel] = []
@@ -60,6 +63,7 @@ def collect_devices(
 
         integration_domains = sorted(dev_platforms.get(device_id, set()))
         primary_integration = integration_domains[0] if integration_domains else ""
+        ent_ids = sorted(dev_entities.get(device_id, set()))
 
         device = DeviceModel(
             device_id=device_id,
@@ -72,6 +76,7 @@ def collect_devices(
             integration_domains=integration_domains,
             identifier_domains=identifier_domains,
             labels=labels,
+            entities=ent_ids,
         )
         devices.append(device)
 

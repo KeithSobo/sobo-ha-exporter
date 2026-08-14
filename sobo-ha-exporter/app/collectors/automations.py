@@ -7,6 +7,8 @@ from typing import Any
 
 import yaml
 
+from app.config import get_config_dir
+
 logger = logging.getLogger(__name__)
 
 # Basic regex for entity_id matching: domain.object_id e.g. light.living_room
@@ -42,7 +44,7 @@ SERVICE_SUFFIXES = {
 
 
 def collect_automations(
-    config_dir: Path | str = "/config",
+    config_dir: Path | str | None = None,
 ) -> tuple[dict[str, list[str]], list[str]]:
     """Parse automations.yaml and extract entity references per automation.
 
@@ -52,7 +54,7 @@ def collect_automations(
     Returns:
         Tuple of (automation_to_entities_map, warnings_list).
     """
-    path = Path(config_dir) / "automations.yaml"
+    path = (Path(config_dir) if config_dir is not None else get_config_dir()) / "automations.yaml"
     if not path.exists():
         logger.info("No automations.yaml found at %s", path)
         return {}, ["automations.yaml file not found"]

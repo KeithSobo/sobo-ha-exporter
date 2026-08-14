@@ -3,15 +3,16 @@
 import logging
 from pathlib import Path
 
+from app.config import get_config_dir
 from app.security.exclusions import is_excluded_file
 
 logger = logging.getLogger(__name__)
 
 
 def collect_configuration_files(
-    config_dir: Path | str = "/config",
+    config_dir: Path | str | None = None,
 ) -> dict[str, str]:
-    """Collect non-excluded configuration files from read-only /config directory.
+    """Collect non-excluded configuration files from read-only config directory.
 
     Args:
         config_dir: Path to mounted read-only Home Assistant configuration directory.
@@ -19,7 +20,7 @@ def collect_configuration_files(
     Returns:
         Dictionary mapping relative file paths to their string contents.
     """
-    base_path = Path(config_dir)
+    base_path = Path(config_dir) if config_dir is not None else get_config_dir()
     collected_files: dict[str, str] = {}
 
     if not base_path.exists():

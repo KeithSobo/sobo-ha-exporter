@@ -210,3 +210,13 @@ def parse_config_dict(data: dict[str, Any]) -> AppConfig:
     )
     config.validate()
     return config
+
+
+def get_config_dir() -> Path:
+    """Get resolved Home Assistant configuration directory.
+
+    Defaults to /homeassistant, customizable via CONFIG_DIR environment variable.
+    """
+    import os
+
+    return Path(os.getenv("CONFIG_DIR", "/homeassistant"))

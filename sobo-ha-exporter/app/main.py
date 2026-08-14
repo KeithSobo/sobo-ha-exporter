@@ -23,14 +23,15 @@ from app.collectors.devices import collect_devices
 from app.collectors.entities import collect_entities
 from app.collectors.integrations import collect_integrations
 from app.collectors.labels import collect_labels
-from app.config import AppConfig, ConfigurationError, load_config
-from app.exporters.json_exporter import (
+from app.config import AppConfig, ConfigurationError, get_config_dir, load_config
+from app.exporters import (
+    export_ai_reference_layer,
+    export_config_yaml,
     export_inventory_json,
     export_metadata_json,
     export_references_json,
+    export_summaries_markdown,
 )
-from app.exporters.markdown_exporter import export_summaries_markdown
-from app.exporters.yaml_exporter import export_config_yaml
 from app.github.deploy_key import DeployKeyError, ensure_deploy_key, log_deploy_key_banner
 from app.github.git_client import GitClient, GitClientError
 from app.github.repository import RepositoryManager, RepositoryManagerError
@@ -151,15 +152,17 @@ def calculate_next_scheduled_run(
 def run_export(
     config: AppConfig,
     data_dir: Path = Path("/data"),
-    config_dir: Path = Path("/config"),
+    config_dir: Path | None = None,
 ) -> bool:
     """Execute complete export pipeline with clean staging replacement."""
     if not EXPORT_LOCK.acquire(blocking=False):
         logger.warning("An export process is already running. Skipping concurrent run.")
         return False
 
+    resolved_config_dir = config_dir if config_dir is not None else get_config_dir()
+
     try:
-        return _execute_export_pipeline(config, data_dir, config_dir)
+        return _execute_export_pipeline(config, data_dir, resolved_config_dir)
     finally:
         EXPORT_LOCK.release()
 
@@ -170,7 +173,6 @@ def _execute_export_pipeline(
     config_dir: Path,
 ) -> bool:
     logger.info("Starting Home Assistant export run...")
-    start_time = time.time()
 
     entities_count = 0
     devices_count = 0
@@ -358,12 +360,27 @@ def _execute_export_pipeline(
             "areas_count": len(areas),
             "labels_count": len(labels),
             "integrations_count": len(integrations),
-            "execution_time_seconds": round(time.time() - start_time, 3),
+            "warnings_count": len(warnings),
         }
         version_info = {
             "version": __version__,
-            "app": "sobo-ha-exporter",
+            "python_version": sys.version,
         }
+
+        export_ai_reference_layer(
+            output_dir=staging_dir,
+            config_dir=config_dir,
+            entities=entities,
+            devices=devices,
+            areas=areas,
+            labels=labels,
+            integrations=integrations,
+            relationships=rel_model,
+            export_config=config.export,
+            export_info=export_info,
+            warnings=warnings,
+        )
+
         export_metadata_json(
             output_dir=staging_dir,
             export_info=export_info,
@@ -488,7 +505,7 @@ def main() -> None:
     logger.info("Starting Sobo Home Assistant Exporter v%s", __version__)
 
     data_dir = Path(os.getenv("DATA_DIR", "/data"))
-    config_dir = Path(os.getenv("CONFIG_DIR", "/config"))
+    config_dir = get_config_dir()
     ssh_dir = data_dir / "ssh"
     status_dir = data_dir / "status"
     options_file = data_dir / "options.json"
