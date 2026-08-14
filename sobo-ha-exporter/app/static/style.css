@@ -173,6 +173,10 @@ body {
   margin-bottom: 16px;
 }
 
+.card-margin {
+  margin-top: 16px;
+}
+
 .card h2 {
   font-size: 1.2rem;
   margin-bottom: 12px;

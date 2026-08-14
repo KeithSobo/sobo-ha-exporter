@@ -155,7 +155,12 @@ class HomeAssistantClient:
         Returns:
             List of registered entity records.
         """
-        return self._websocket_command("config/entity_registry/list")
+        res = self._websocket_command("config/entity_registry/list")
+        if not isinstance(res, list):
+            raise HomeAssistantClientError(
+                f"WebSocket command 'config/entity_registry/list' expected list, got {type(res).__name__}"
+            )
+        return res
 
     def get_device_registry(self) -> list[dict[str, Any]]:
         """Fetch device registry items via WebSocket. Required method.
@@ -163,7 +168,12 @@ class HomeAssistantClient:
         Returns:
             List of registered device records.
         """
-        return self._websocket_command("config/device_registry/list")
+        res = self._websocket_command("config/device_registry/list")
+        if not isinstance(res, list):
+            raise HomeAssistantClientError(
+                f"WebSocket command 'config/device_registry/list' expected list, got {type(res).__name__}"
+            )
+        return res
 
     def get_area_registry(self) -> list[dict[str, Any]]:
         """Fetch area registry items via WebSocket. Required method.
@@ -171,7 +181,12 @@ class HomeAssistantClient:
         Returns:
             List of registered area records.
         """
-        return self._websocket_command("config/area_registry/list")
+        res = self._websocket_command("config/area_registry/list")
+        if not isinstance(res, list):
+            raise HomeAssistantClientError(
+                f"WebSocket command 'config/area_registry/list' expected list, got {type(res).__name__}"
+            )
+        return res
 
     def get_label_registry(self) -> list[dict[str, Any]]:
         """Fetch label registry items via WebSocket.
@@ -181,18 +196,56 @@ class HomeAssistantClient:
         Returns:
             List of registered label records.
         """
-        return self._websocket_command("config/label_registry/list")
+        res = self._websocket_command("config/label_registry/list")
+        if not isinstance(res, list):
+            raise HomeAssistantClientError(
+                f"WebSocket command 'config/label_registry/list' expected list, got {type(res).__name__}"
+            )
+        return res
 
-    def _websocket_command(self, message_type: str) -> list[dict[str, Any]]:
-        """Execute WebSocket command to retrieve registry data.
+    def get_lovelace_dashboards(self) -> list[dict[str, Any]]:
+        """Fetch custom Lovelace dashboard registrations via WebSocket.
+
+        Returns:
+            List of dashboard configuration dicts.
+        """
+        res = self._websocket_command("lovelace/dashboards/list")
+        if not isinstance(res, list):
+            raise HomeAssistantClientError(
+                f"WebSocket command 'lovelace/dashboards/list' expected list, got {type(res).__name__}"
+            )
+        return res
+
+    def get_lovelace_config(self, url_path: str | None = None) -> dict[str, Any]:
+        """Fetch configuration for a specific Lovelace dashboard via WebSocket.
+
+        Args:
+            url_path: Optional dashboard URL path (None for default dashboard).
+
+        Returns:
+            Dictionary containing dashboard configuration (title, views, cards, etc.).
+        """
+        payload: dict[str, Any] = {"type": "lovelace/config"}
+        if url_path:
+            payload["url_path"] = url_path
+        else:
+            payload["url_path"] = None
+
+        res = self._websocket_command(payload)
+        if isinstance(res, dict):
+            return res
+        return {}
+
+    def _websocket_command(self, payload: str | dict[str, Any]) -> Any:
+        """Execute WebSocket command to retrieve data from Home Assistant.
 
         Guarantees socket closure and raises HomeAssistantClientError on any failure.
 
         Args:
-            message_type: Command message type (e.g. 'config/entity_registry/list').
+            payload: Command type string or dictionary payload.
 
         Returns:
-            List of result dictionaries.
+            Command result object (list, dict, or primitive).
         """
         ws_url = self.base_url.replace("http://", "ws://").replace("https://", "wss://")
         if ws_url.endswith("/api"):
@@ -242,13 +295,20 @@ class HomeAssistantClient:
                 raise HomeAssistantClientError(f"WebSocket authentication failed: {msg}")
 
             msg_id = 1
-            ws.send(json.dumps({"id": msg_id, "type": message_type}))
+            if isinstance(payload, str):
+                cmd_dict = {"id": msg_id, "type": payload}
+                cmd_name = payload
+            else:
+                cmd_dict = {"id": msg_id, **payload}
+                cmd_name = str(payload.get("type"))
+
+            ws.send(json.dumps(cmd_dict))
 
             try:
                 result_msg = json.loads(ws.recv())
             except Exception as e:
                 raise HomeAssistantClientError(
-                    f"WebSocket error waiting for command '{message_type}' response: {e}"
+                    f"WebSocket error waiting for command '{cmd_name}' response: {e}"
                 ) from e
 
             if result_msg.get("success") is not True:
@@ -256,17 +316,10 @@ class HomeAssistantClient:
                 code = err_info.get("code", "unknown_error")
                 err_text = err_info.get("message", "no message")
                 raise HomeAssistantClientError(
-                    f"WebSocket command '{message_type}' failed ({code}): {err_text}"
+                    f"WebSocket command '{cmd_name}' failed ({code}): {err_text}"
                 )
 
-            res = result_msg.get("result")
-            if not isinstance(res, list):
-                raise HomeAssistantClientError(
-                    f"Unexpected response shape for WebSocket command '{message_type}': "
-                    f"expected list, got {type(res).__name__}"
-                )
-
-            return res
+            return result_msg.get("result")
 
         finally:
             if ws:

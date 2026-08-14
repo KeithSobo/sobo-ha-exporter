@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from app.models.area import AreaModel
+from app.models.dashboard import DashboardModel
 from app.models.device import DeviceModel
 from app.models.entity import EntityModel
 from app.models.label import LabelModel
@@ -31,18 +32,9 @@ def export_inventory_json(
     labels: list[LabelModel],
     integrations: list[dict[str, Any]],
     relationships: RelationshipModel,
+    dashboards: list[DashboardModel] | None = None,
 ) -> None:
-    """Export inventory JSON files into inventory/ subdirectory.
-
-    Args:
-        output_dir: Staging base directory.
-        entities: List of EntityModel.
-        devices: List of DeviceModel.
-        areas: List of AreaModel.
-        labels: List of LabelModel.
-        integrations: List of integration dictionaries.
-        relationships: RelationshipModel instance.
-    """
+    """Export inventory JSON files into inventory/ subdirectory."""
     inv_dir = output_dir / "inventory"
 
     # 1. entities.json
@@ -69,8 +61,22 @@ def export_inventory_json(
     integrations_sorted = sorted(integrations, key=lambda x: x.get("domain", ""))
     write_stable_json(inv_dir / "integrations.json", integrations_sorted)
 
-    # 6. relationships.json
+    # 6. dashboards.json
+    if dashboards is not None:
+        export_dashboards_json(output_dir, dashboards)
+
+    # 7. relationships.json
     write_stable_json(inv_dir / "relationships.json", relationships.to_dict())
+
+
+def export_dashboards_json(
+    output_dir: Path,
+    dashboards: list[DashboardModel],
+) -> None:
+    """Export dashboards inventory file into inventory/dashboards.json."""
+    inv_dir = output_dir / "inventory"
+    dash_data = [d.to_dict() for d in sorted(dashboards, key=lambda x: (x.title.lower(), x.id))]
+    write_stable_json(inv_dir / "dashboards.json", dash_data)
 
 
 def export_references_json(
@@ -102,6 +108,10 @@ def export_references_json(
     write_stable_json(
         ref_dir / "entity-usage.json",
         relationships.entity_to_automations,
+    )
+    write_stable_json(
+        ref_dir / "dashboard-entity-map.json",
+        relationships.dashboard_to_entities,
     )
 
 

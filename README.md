@@ -4,7 +4,7 @@ A Home Assistant OS add-on that exports a sanitized, AI-readable reference model
 
 ## Features & Purpose
 
-- **One-Way Export Only**: Strictly reads Home Assistant configuration (read-only) and API data to generate reference models. Never imports or deploys configuration back into Home Assistant.
+- **Native UI-Managed Lovelace Dashboard Support**: Discovers UI-managed (storage mode) and YAML dashboards via the official Home Assistant WebSocket API (`lovelace/dashboards/list` and `lovelace/config`), extracting cards, views, sections, custom cards, Pillar components, navigation paths, and entity relationships into `inventory/dashboards.json` and multi-file `ai/dashboards/`.
 - **AI-Readable Structure**: Exports structured JSON inventory, relationship maps, YAML configurations, and Markdown summaries suitable as context for LLMs / AI tools.
 - **Strict Data Sanitization**: Redacts sensitive information including coordinates, MAC addresses, IP addresses, user IDs, webhook IDs, credentials in URLs, and secret tokens.
 - **Pre-Commit Secret Scanner**: Scans generated artifacts for high-confidence credentials before pushing and aborts if a secret is detected.

@@ -13,6 +13,7 @@ The default Home Assistant configuration directory read by the exporter inside t
 - **`inventory/areas.json`**: Area definitions sorted by name.
 - **`inventory/labels.json`**: Label definitions sorted by name.
 - **`inventory/integrations.json`**: Active integrations derived from entity platforms and device integration domains.
+- **`inventory/dashboards.json`**: Complete normalized Lovelace dashboards registry (UI-managed storage mode and YAML mode), views, cards, custom cards, Pillar cards, and entity references.
 - **`inventory/relationships.json`**: Multi-directional mapping matrices.
 
 ## Reference Maps (`references/`)
@@ -22,6 +23,7 @@ The default Home Assistant configuration directory read by the exporter inside t
 - **`references/area-device-map.json`**: Devices associated with each area.
 - **`references/label-target-map.json`**: Entities and devices tagged per label.
 - **`references/entity-usage.json`**: Inverted index of entity references.
+- **`references/dashboard-entity-map.json`**: Association between dashboards and referenced entities.
 
 ## AI Reference Layer (`ai/`)
 
@@ -37,7 +39,9 @@ Compact, deterministic, navigable reference outputs designed for AI context inge
 - **`ai/scripts.md`**: Detailed script steps, service calls, and referenced entities.
 - **`ai/integrations.md`**: Domain-level integration stats derived from entity platforms.
 - **`ai/labels.md`**: Label usage breakdowns.
-- **`ai/dashboards.md`**: Dashboard analysis overview or status statement.
+- **`ai/dashboards/`**: Multi-file Lovelace dashboard analysis directory:
+  - **`overview.md`**: Summary table of all discovered dashboards, modes, view/card counts, custom card usage, and Pillar components.
+  - Per-dashboard files (e.g. `Home.md`, `Network.md`): Breakdown of views, sections, cards, custom cards, Pillar components, navigation paths, conditional cards, Jinja templates, and warnings.
 - **`ai/orphaned-and-unassigned.md`**: Breakdown of unassigned, area-less, device-less, or unreferenced records.
 - **`ai/impact-index.json`**: Reverse-dependency index mapping entities, devices, and areas to automations, scripts, and dashboards.
 - **`ai/search-index.json`**: Search records with normalized keyword arrays for AI context retrieval.

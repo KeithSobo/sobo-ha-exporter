@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.config import AppConfig, parse_config_dict
+from app.config import AppConfig, ExportConfig, parse_config_dict
 from app.github.deploy_key import DeployKeyError
 from app.main import get_ha_timezone, main, run_export, sanitize_error_message, update_status
 
@@ -41,6 +41,47 @@ def test_update_status(tmp_path):
     assert data["last_commit"] == "abc1234"
     assert data["entities_exported"] == 10
     assert data["devices_exported"] == 2
+
+
+def test_pipeline_execution_with_dashboards(tmp_path, monkeypatch):
+    monkeypatch.setenv("SUPERVISOR_TOKEN", "test_token")
+    data_dir = tmp_path / "data"
+    config_dir = tmp_path / "config"
+    data_dir.mkdir()
+    config_dir.mkdir()
+
+    cfg = AppConfig(
+        repository="git@github.com:owner/repo.git",
+        branch="main",
+        export=ExportConfig(dashboards=True),
+    )
+
+    mock_git = MagicMock()
+    mock_git.commit_and_push.return_value = (True, "commit123")
+
+    with (
+        patch(
+            "app.main.ensure_deploy_key",
+            return_value=(
+                data_dir / "id_ed25519",
+                data_dir / "id_ed25519.pub",
+                "ssh-ed25519 AAA...",
+            ),
+        ),
+        patch("app.main.HomeAssistantClient"),
+        patch("app.main.GitClient", return_value=mock_git),
+        patch("app.main.RepositoryManager") as mock_repo_mgr_cls,
+        patch("app.main.collect_entities", return_value=[]),
+        patch("app.main.collect_devices", return_value=[]),
+        patch("app.main.collect_areas", return_value=[]),
+        patch("app.main.collect_labels", return_value=[]),
+        patch("app.main.collect_dashboards", return_value=([], [], None)),
+    ):
+        mock_repo = MagicMock()
+        mock_repo_mgr_cls.return_value.prepare_repository.return_value = mock_repo
+
+        success = run_export(config_dir=config_dir, data_dir=data_dir, config=cfg)
+        assert success is True
 
 
 def test_pipeline_unexpected_exception_writes_error_status(tmp_path, monkeypatch):
@@ -124,7 +165,9 @@ def test_secret_scanner_failure_writes_safe_manifest_and_cleans_staging(tmp_path
     config = AppConfig(
         repository="git@github.com:KeithSobo/sobo-ha-exporter.git",
         branch="main",
-        export=parse_config_dict({"repository": "git@github.com:KeithSobo/sobo-ha-exporter.git"}).export,
+        export=parse_config_dict(
+            {"repository": "git@github.com:KeithSobo/sobo-ha-exporter.git"}
+        ).export,
     )
     config.export.entities = True
     config.export.configuration_summary = False

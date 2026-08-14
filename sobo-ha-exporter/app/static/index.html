@@ -132,6 +132,45 @@
             </div>
           </div>
 
+          <div class="card card-margin">
+            <h2>Lovelace Dashboards Analysis</h2>
+            <div class="stat-grid" id="dashboard-stats">
+              <div class="stat-box">
+                <span class="stat-num" id="cnt-dashboards">0</span
+                ><span class="stat-label">Dashboards</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-num" id="cnt-dash-views">0</span
+                ><span class="stat-label">Views</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-num" id="cnt-dash-cards">0</span
+                ><span class="stat-label">Total Cards</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-num" id="cnt-dash-custom-cards">0</span
+                ><span class="stat-label">Custom Cards</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-num" id="cnt-dash-pillar-cards">0</span
+                ><span class="stat-label">Pillar Cards</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-num" id="cnt-dash-entities">0</span
+                ><span class="stat-label">Referenced Entities</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-num" id="cnt-dash-unresolved">0</span
+                ><span class="stat-label">Unresolved Templates</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card card-margin" id="card-dash-error" style="display: none">
+            <h2 class="text-warning">Dashboard Discovery Issue</h2>
+            <p class="text-warning" id="txt-dash-error"></p>
+          </div>
+
           <div class="card" id="card-last-error" style="display: none">
             <h2 class="text-error">Last Error</h2>
             <pre class="code-block text-error" id="txt-last-error"></pre>

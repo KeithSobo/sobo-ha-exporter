@@ -15,6 +15,7 @@ import yaml
 
 from app.config import ExportConfig
 from app.models.area import AreaModel
+from app.models.dashboard import DashboardModel
 from app.models.device import DeviceModel
 from app.models.entity import EntityModel
 from app.models.label import LabelModel
@@ -222,6 +223,8 @@ def export_ai_reference_layer(
     export_config: ExportConfig,
     export_info: dict[str, Any],
     warnings: list[str],
+    dashboards: list[DashboardModel] | None = None,
+    dash_discovery_error: str | None = None,
 ) -> None:
     """Export complete AI reference layer into `ai/` subdirectory."""
     ai_dir = output_dir / "ai"
@@ -297,7 +300,7 @@ def export_ai_reference_layer(
         "- [Scripts](scripts.md)\n"
         "- [Integrations](integrations.md)\n"
         "- [Labels](labels.md)\n"
-        "- [Dashboards](dashboards.md)\n"
+        "- [Dashboards](dashboards/overview.md)\n"
         "- [Orphaned and Unassigned](orphaned-and-unassigned.md)\n"
     )
     write_text(ai_dir / "overview.md", overview_content)
@@ -596,15 +599,132 @@ def export_ai_reference_layer(
         )
     write_text(ai_dir / "labels.md", "\n".join(label_lines))
 
-    # 11. ai/dashboards.md
-    dash_lines = ["# Dashboards Summary\n"]
-    if not export_config.dashboards:
-        dash_lines.append(
-            "_Dashboard analysis was not included in this export (dashboards: false)._\n"
+    # 11. ai/dashboards/ directory
+    dash_dir = ai_dir / "dashboards"
+    dash_dir.mkdir(parents=True, exist_ok=True)
+
+    dash_list = dashboards or []
+    overview_lines = [
+        "# Lovelace Dashboards Overview\n",
+        f"Total Dashboards Discovered: {len(dash_list)}\n",
+    ]
+
+    if dash_discovery_error:
+        overview_lines.append(
+            f"> [!WARNING]\n> **Dashboard Discovery Issue**: {dash_discovery_error}\n"
         )
+
+    if not export_config.dashboards:
+        overview_lines.append(
+            "_Dashboard analysis was disabled in configuration (`export.dashboards: false`)._\n"
+        )
+    elif not dash_list:
+        if not dash_discovery_error:
+            overview_lines.append(
+                "_No Lovelace dashboards were discovered on this Home Assistant installation._\n"
+            )
     else:
-        dash_lines.append("_Dashboard configuration files were not discovered or exported._\n")
-    write_text(ai_dir / "dashboards.md", "\n".join(dash_lines))
+        overview_lines.append(
+            "| Dashboard Title | Mode | Default | Views | Cards | Custom Cards | Pillar Cards |\n"
+            "| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n"
+        )
+        for dash in sorted(dash_list, key=lambda x: (x.title.lower(), x.id)):
+            d_dict = dash.to_dict()
+            st = d_dict["stats"]
+            def_str = "Yes" if dash.default_dashboard else "No"
+            slug_name = (dash.title or dash.id).strip().replace(" ", "_").replace("/", "_")
+            overview_lines.append(
+                f"| [{dash.title}]({slug_name}.md) | `{dash.mode}` | {def_str} | "
+                f"{st['view_count']} | {st['card_count']} | {st['custom_card_count']} | "
+                f"{st['pillar_component_count']} |"
+            )
+
+            # Generate individual per-dashboard Markdown file (e.g. Home.md)
+            d_lines = [
+                f"# Dashboard: {dash.title}\n",
+                f"- **ID**: `{dash.id}`",
+                f"- **URL Path**: `{dash.url_path or 'default'}`",
+                f"- **Mode**: `{dash.mode}` (Source: `{dash.source}`)",
+                f"- **Default Dashboard**: {'Yes' if dash.default_dashboard else 'No'}",
+                f"- **Admin Only**: {'Yes' if dash.require_admin else 'No'}\n",
+                "## Summary Metrics\n",
+                f"- **Views**: {st['view_count']}",
+                f"- **Total Cards**: {st['card_count']}",
+                f"- **Custom Cards Used**: {st['custom_card_count']}",
+                f"- **Pillar Components**: {st['pillar_component_count']}",
+                f"- **Referenced Entities**: {st['entity_count']}\n",
+            ]
+
+            if dash.custom_cards:
+                d_lines.append("## Custom Cards Used\n")
+                for cc in dash.custom_cards:
+                    d_lines.append(f"- `{cc}`")
+                d_lines.append("")
+
+            if dash.pillar_components:
+                d_lines.append("## Pillar Components\n")
+                for pc in dash.pillar_components:
+                    p_title = pc.get("title") or pc.get("card_type")
+                    d_lines.append(f"### {p_title}")
+                    d_lines.append(f"- **Card Type**: `{pc.get('card_type')}`")
+                    if pc.get("navigation_path"):
+                        d_lines.append(f"- **Navigation Path**: `{pc['navigation_path']}`")
+                    p_ents = pc.get("entities") or []
+                    if p_ents:
+                        d_lines.append(
+                            f"- **Referenced Entities ({len(p_ents)})**: "
+                            f"{', '.join([f'`{e}`' for e in p_ents])}"
+                        )
+                    d_lines.append("")
+
+            if dash.views:
+                d_lines.append("## Views & Layout\n")
+                for idx, v in enumerate(dash.views, 1):
+                    v_icon = f" ({v.icon})" if v.icon else ""
+                    d_lines.append(f"### View {idx}: {v.title}{v_icon}\n")
+                    if v.path:
+                        d_lines.append(f"- **Path**: `{v.path}`")
+                    d_lines.append(f"- **Cards in View**: {len(v.cards)}")
+                    if v.sections:
+                        d_lines.append(f"- **Sections in View**: {len(v.sections)}")
+                    d_lines.append("")
+
+                    def _format_cards(
+                        cards: list, target_lines: list[str], indent_level: int = 0
+                    ) -> None:
+                        prefix = "  " * indent_level
+                        for card in cards:
+                            c_t = card.title or card.type
+                            target_lines.append(f"{prefix}- **{c_t}** (`{card.type}`)")
+                            if card.entities:
+                                target_lines.append(
+                                    f"{prefix}  - Entities: "
+                                    f"{', '.join([f'`{e}`' for e in card.entities])}"
+                                )
+                            if card.navigation_path:
+                                target_lines.append(
+                                    f"{prefix}  - Navigation: `{card.navigation_path}`"
+                                )
+                            if card.services:
+                                target_lines.append(
+                                    f"{prefix}  - Services Called: "
+                                    f"{', '.join([f'`{s}`' for s in card.services])}"
+                                )
+                            if card.nested_cards:
+                                _format_cards(card.nested_cards, target_lines, indent_level + 1)
+
+                    _format_cards(v.cards, d_lines)
+                    d_lines.append("")
+
+            if dash.warnings:
+                d_lines.append("## Warnings & Unresolved Templates\n")
+                for w in dash.warnings:
+                    d_lines.append(f"- ⚠️ {w}")
+                d_lines.append("")
+
+            write_text(dash_dir / f"{slug_name}.md", "\n".join(d_lines))
+
+    write_text(dash_dir / "overview.md", "\n".join(overview_lines))
 
     # 12. ai/orphaned-and-unassigned.md
     ents_no_dev = sorted([e.entity_id for e in entities if not e.device_id])
@@ -650,13 +770,53 @@ def export_ai_reference_layer(
     ]
     write_text(ai_dir / "orphaned-and-unassigned.md", "".join(orph_lines))
 
+    # Build dashboard impact mapping
+    dash_entity_usage: dict[str, list[dict[str, Any]]] = {}
+    dash_device_usage: dict[str, set[str]] = {}
+    dash_area_usage: dict[str, set[str]] = {}
+
+    for dash in dash_list:
+        cur_dash_id = dash.id
+        cur_dash_title = dash.title
+        for view in dash.views:
+            cur_view_title = view.title
+
+            def _map_card_entities(cards: list, d_id: str, d_t: str, v_t: str) -> None:
+                for card in cards:
+                    c_type = card.type
+                    nav_p = card.navigation_path
+                    p_comp = card.pillar_component
+                    for ent_id in card.entities:
+                        dash_entity_usage.setdefault(ent_id, []).append(
+                            {
+                                "dashboard_id": d_id,
+                                "dashboard_title": d_t,
+                                "view_title": v_t,
+                                "card_type": c_type,
+                                "navigation_path": nav_p,
+                                "pillar_component": p_comp,
+                            }
+                        )
+                        if ent_id in ent_map and ent_map[ent_id].device_id:
+                            dev_id_val = ent_map[ent_id].device_id
+                            if dev_id_val:
+                                dash_device_usage.setdefault(dev_id_val, set()).add(d_t)
+                        if ent_id in ent_map and ent_map[ent_id].area_id:
+                            area_id_val = ent_map[ent_id].area_id
+                            if area_id_val:
+                                dash_area_usage.setdefault(area_id_val, set()).add(d_t)
+                    if card.nested_cards:
+                        _map_card_entities(card.nested_cards, d_id, d_t, v_t)
+
+            _map_card_entities(view.cards, cur_dash_id, cur_dash_title, cur_view_title)
+
     # 13. ai/impact-index.json
     impact_entities: dict[str, Any] = {}
     for e in sorted(entities, key=lambda x: x.entity_id):
         impact_entities[e.entity_id] = {
             "area_id": e.area_id or None,
             "automations": sorted(auto_ref_map.get(e.entity_id, set())),
-            "dashboards": [],
+            "dashboards": dash_entity_usage.get(e.entity_id, []),
             "device_id": e.device_id or None,
             "labels": sorted(e.labels),
             "related_entities": [],
@@ -682,7 +842,7 @@ def export_ai_reference_layer(
         impact_devices[d.device_id] = {
             "area_id": d.area_id or None,
             "automations": d_autos,
-            "dashboards": [],
+            "dashboards": sorted(dash_device_usage.get(d.device_id, set())),
             "entities": sorted(d.entities),
             "scripts": d_scripts,
         }
@@ -707,7 +867,7 @@ def export_ai_reference_layer(
         )
         impact_areas[a.area_id] = {
             "automations": a_autos,
-            "dashboards": [],
+            "dashboards": sorted(dash_area_usage.get(a.area_id, set())),
             "devices": a_devs,
             "entities": a_ents,
             "scripts": a_scripts,
@@ -722,6 +882,28 @@ def export_ai_reference_layer(
 
     # 14. ai/search-index.json
     search_records: list[dict[str, Any]] = []
+
+    for dash in sorted(dash_list, key=lambda x: (x.title.lower(), x.id)):
+        keywords = _build_keywords(dash.title, dash.id, dash.url_path, "dashboard")
+        slug_name = (dash.title or dash.id).strip().replace(" ", "_").replace("/", "_")
+        search_records.append(
+            {
+                "area": None,
+                "device": None,
+                "domain": "dashboard",
+                "id": dash.id,
+                "integration": None,
+                "keywords": keywords,
+                "labels": [],
+                "name": dash.title,
+                "summary": (
+                    f"Lovelace dashboard '{dash.title}' ({dash.mode} mode) "
+                    f"with {len(dash.views)} views."
+                ),
+                "type": "dashboard",
+                "file_path": f"ai/dashboards/{slug_name}.md",
+            }
+        )
 
     for a in sorted(areas, key=lambda x: x.area_id):
         a_dev_cnt = sum(1 for d in devices if d.area_id == a.area_id)

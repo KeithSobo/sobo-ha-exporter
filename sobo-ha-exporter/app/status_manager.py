@@ -101,6 +101,7 @@ class StatusManager:
         schedule_time: str | None = None,
         schedule_timezone: str | None = None,
         counts: dict[str, int] | None = None,
+        dashboard_discovery_error: str | None = None,
     ) -> None:
         """Update status.json atomically."""
         current = self.get_status()
@@ -119,6 +120,8 @@ class StatusManager:
         if last_error is not None:
             current["last_error"] = last_error
             current["message"] = last_error
+        if dashboard_discovery_error is not None:
+            current["dashboard_discovery_error"] = dashboard_discovery_error
         if next_run is not None:
             current["next_run"] = next_run
         if git_connection_status is not None:
@@ -177,6 +180,7 @@ class StatusManager:
             ("metadata", "metadata"),
             ("references", "references"),
             ("summaries", "summaries"),
+            ("dashboards", "dashboards"),
         ]:
             if cat not in category_stats:
                 is_enabled = export_config_data.get(key_name, export_config_data.get(cat, True))

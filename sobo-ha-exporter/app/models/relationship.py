@@ -16,6 +16,8 @@ class RelationshipModel:
     integration_to_entities: dict[str, list[str]] = field(default_factory=dict)
     automation_to_entities: dict[str, list[str]] = field(default_factory=dict)
     entity_to_automations: dict[str, list[str]] = field(default_factory=dict)
+    dashboard_to_entities: dict[str, list[str]] = field(default_factory=dict)
+    entity_to_dashboards: dict[str, list[str]] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize relationship model with sorted keys and lists."""
@@ -39,5 +41,11 @@ class RelationshipModel:
             },
             "entity_to_automations": {
                 k: sorted(v) for k, v in sorted(self.entity_to_automations.items())
+            },
+            "dashboard_to_entities": {
+                k: sorted(v) for k, v in sorted(self.dashboard_to_entities.items())
+            },
+            "entity_to_dashboards": {
+                k: sorted(v) for k, v in sorted(self.entity_to_dashboards.items())
             },
         }

@@ -140,7 +140,7 @@ def test_websocket_command_failures_and_cleanup(monkeypatch):
     ]
     with patch("websocket.create_connection", return_value=mock_ws3):
         with pytest.raises(HomeAssistantClientError, match="expected list"):
-            client._websocket_command("config/entity_registry/list")
+            client.get_entity_registry()
         mock_ws3.close.assert_called_once()
 
 
@@ -155,3 +155,28 @@ def test_get_label_registry_raises_client_error(monkeypatch):
     ):
         with pytest.raises(HomeAssistantClientError, match="Label registry unsupported"):
             client.get_label_registry()
+
+
+def test_get_registries_and_lovelace(monkeypatch):
+    monkeypatch.setenv("SUPERVISOR_TOKEN", "test_token")
+    client = HomeAssistantClient()
+
+    with patch.object(
+        client,
+        "_websocket_command",
+        return_value=[{"id": "dev1"}],
+    ):
+        devs = client.get_device_registry()
+        areas = client.get_area_registry()
+        dashboards = client.get_lovelace_dashboards()
+        assert devs == [{"id": "dev1"}]
+        assert areas == [{"id": "dev1"}]
+        assert dashboards == [{"id": "dev1"}]
+
+    with patch.object(
+        client,
+        "_websocket_command",
+        return_value={"title": "Main Home"},
+    ):
+        cfg = client.get_lovelace_config(None)
+        assert cfg == {"title": "Main Home"}

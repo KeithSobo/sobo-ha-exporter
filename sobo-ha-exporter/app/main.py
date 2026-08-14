@@ -20,6 +20,7 @@ from app.analyzers.config_analyzers import analyze_all_configuration
 from app.collectors.areas import collect_areas
 from app.collectors.automations import collect_automations
 from app.collectors.configuration import collect_configuration_files
+from app.collectors.dashboards import collect_dashboards
 from app.collectors.devices import collect_devices
 from app.collectors.entities import collect_entities
 from app.collectors.integrations import collect_integrations
@@ -40,6 +41,7 @@ from app.github.deploy_key import ensure_deploy_key, log_deploy_key_banner
 from app.github.git_client import GitClient, GitClientError
 from app.github.repository import RepositoryManager, RepositoryManagerError
 from app.ha_client import HomeAssistantClient
+from app.models.dashboard import DashboardModel
 from app.models.relationship import RelationshipModel
 from app.security.sanitizer import DataSanitizer
 from app.security.secret_scanner import SecretScanner
@@ -291,6 +293,19 @@ def _execute_export_pipeline(
             auto_entity_map = {k: list(v) for k, v in auto_entity_map_raw.items()}
             warnings.extend(auto_warnings)
 
+        dashboards: list[DashboardModel] = []
+        dash_discovery_error: str | None = None
+        if config.export.dashboards:
+            dashboards, dash_warns, dash_discovery_error = collect_dashboards(
+                client=client,
+                config_dir=config_dir,
+                entities=entity_models,
+                devices=device_models,
+                areas=area_models,
+                labels=label_models,
+            )
+            warnings.extend(dash_warns)
+
         cfg_files: dict[str, str] = {}
         if config.advanced.raw_configuration_export:
             cfg_files = collect_configuration_files(
@@ -300,6 +315,12 @@ def _execute_export_pipeline(
             )
 
         rel_model = RelationshipModel()
+        for d in dashboards:
+            d_dict = d.to_dict()
+            d_ents = d_dict["relationships"]["entities"]
+            rel_model.dashboard_to_entities[d.id] = d_ents
+            for ent_id in d_ents:
+                rel_model.entity_to_dashboards.setdefault(ent_id, []).append(d.title)
 
         # 3. Apply Security Sanitizer
         sanitizer = DataSanitizer(config.sanitization)
@@ -319,6 +340,7 @@ def _execute_export_pipeline(
                 labels=label_models,
                 integrations=integrations,
                 relationships=rel_model,
+                dashboards=dashboards if config.export.dashboards else None,
             )
             export_references_json(output_dir=staging_dir, relationships=rel_model)
             export_summaries_markdown(
@@ -375,6 +397,8 @@ def _execute_export_pipeline(
             export_config=config.export,
             export_info=export_info,
             warnings=warnings,
+            dashboards=dashboards,
+            dash_discovery_error=dash_discovery_error,
         )
 
         export_metadata_json(
@@ -548,6 +572,13 @@ def _execute_export_pipeline(
                 "group",
             }
         )
+        dash_card_cnt = sum(d.to_dict()["stats"]["card_count"] for d in dashboards)
+        dash_view_cnt = sum(d.to_dict()["stats"]["view_count"] for d in dashboards)
+        dash_custom_cnt = sum(d.to_dict()["stats"]["custom_card_count"] for d in dashboards)
+        dash_pillar_cnt = sum(d.to_dict()["stats"]["pillar_component_count"] for d in dashboards)
+        dash_ent_cnt = sum(d.to_dict()["stats"]["entity_count"] for d in dashboards)
+        dash_unres_cnt = sum(d.to_dict()["stats"]["unresolved_template_count"] for d in dashboards)
+
         counts_dict = {
             "entities": len(entity_models),
             "devices": len(device_models),
@@ -556,6 +587,13 @@ def _execute_export_pipeline(
             "integrations": len(integrations),
             "automations": len(auto_entity_map),
             "helpers": helpers_count,
+            "dashboards": len(dashboards),
+            "dashboard_views": dash_view_cnt,
+            "dashboard_cards": dash_card_cnt,
+            "dashboard_custom_cards": dash_custom_cnt,
+            "dashboard_pillar_cards": dash_pillar_cnt,
+            "dashboard_entities": dash_ent_cnt,
+            "dashboard_unresolved": dash_unres_cnt,
             "warnings": warnings_count,
         }
 
@@ -567,6 +605,7 @@ def _execute_export_pipeline(
                 git_connection_status="connected",
                 secret_scan_status="BLOCKED" if raw_export_blocked else "PASS",
                 counts=counts_dict,
+                dashboard_discovery_error=dash_discovery_error,
             )
         else:
             logger.info("No content changes detected. Commit skipped.")
@@ -576,6 +615,7 @@ def _execute_export_pipeline(
                 git_connection_status="connected",
                 secret_scan_status="BLOCKED" if raw_export_blocked else "PASS",
                 counts=counts_dict,
+                dashboard_discovery_error=dash_discovery_error,
             )
 
         return True

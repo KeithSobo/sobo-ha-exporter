@@ -97,6 +97,32 @@
     document.getElementById("cnt-scripts").textContent = counts.scripts || 0;
     document.getElementById("cnt-helpers").textContent = counts.helpers || 0;
 
+    const elDash = document.getElementById("cnt-dashboards");
+    if (elDash) elDash.textContent = counts.dashboards || 0;
+    const elDashViews = document.getElementById("cnt-dash-views");
+    if (elDashViews) elDashViews.textContent = counts.dashboard_views || 0;
+    const elDashCards = document.getElementById("cnt-dash-cards");
+    if (elDashCards) elDashCards.textContent = counts.dashboard_cards || 0;
+    const elDashCustom = document.getElementById("cnt-dash-custom-cards");
+    if (elDashCustom) elDashCustom.textContent = counts.dashboard_custom_cards || 0;
+    const elDashPillar = document.getElementById("cnt-dash-pillar-cards");
+    if (elDashPillar) elDashPillar.textContent = counts.dashboard_pillar_cards || 0;
+    const elDashEnts = document.getElementById("cnt-dash-entities");
+    if (elDashEnts) elDashEnts.textContent = counts.dashboard_entities || 0;
+    const elDashUnresolved = document.getElementById("cnt-dash-unresolved");
+    if (elDashUnresolved) elDashUnresolved.textContent = counts.dashboard_unresolved || 0;
+
+    const cardDashErr = document.getElementById("card-dash-error");
+    const txtDashErr = document.getElementById("txt-dash-error");
+    if (cardDashErr && txtDashErr) {
+      if (data.dashboard_discovery_error) {
+        cardDashErr.style.display = "block";
+        txtDashErr.textContent = data.dashboard_discovery_error;
+      } else {
+        cardDashErr.style.display = "none";
+      }
+    }
+
     const cardErr = document.getElementById("card-last-error");
     const txtErr = document.getElementById("txt-last-error");
     if (data.last_error) {

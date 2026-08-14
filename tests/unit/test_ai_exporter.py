@@ -163,7 +163,7 @@ def test_export_ai_reference_layer(tmp_path):
         "scripts.md",
         "integrations.md",
         "labels.md",
-        "dashboards.md",
+        "dashboards/overview.md",
         "orphaned-and-unassigned.md",
         "impact-index.json",
         "search-index.json",
