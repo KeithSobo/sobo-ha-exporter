@@ -13,6 +13,17 @@ configuration:
   export:
     name: "Export Categories"
     description: "Select which Home Assistant metadata components to include"
+  advanced:
+    name: "Advanced Settings"
+    description: "Advanced options including risky raw configuration file copying"
+    raw_configuration_export:
+      name: "Raw Configuration Export"
+      description: >-
+        Copies raw Home Assistant configuration files into the reference
+        repository. Raw files may contain passwords, API keys, encryption
+        keys, URLs with credentials, or other sensitive values. The exporter
+        will sanitize and secret-scan them, but publication may be blocked.
+        Disabled by default.
   sanitization:
     name: "Sanitization Settings"
     description: "Enable security redaction for sensitive fields"

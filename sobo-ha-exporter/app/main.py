@@ -16,6 +16,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app import __version__
+from app.analyzers.config_analyzers import analyze_all_configuration
 from app.collectors.areas import collect_areas
 from app.collectors.automations import collect_automations
 from app.collectors.configuration import collect_configuration_files
@@ -25,6 +26,7 @@ from app.collectors.integrations import collect_integrations
 from app.collectors.labels import collect_labels
 from app.config import AppConfig, ConfigurationError, get_config_dir, load_config
 from app.exporters import (
+    export_ai_configuration_summary,
     export_ai_reference_layer,
     export_config_yaml,
     export_summaries_markdown,
@@ -290,7 +292,7 @@ def _execute_export_pipeline(
             warnings.extend(auto_warnings)
 
         cfg_files: dict[str, str] = {}
-        if config.export.configuration_files:
+        if config.advanced.raw_configuration_export:
             cfg_files = collect_configuration_files(
                 config_dir=config_dir,
                 allow_custom_components=config.export.custom_components,
@@ -327,7 +329,22 @@ def _execute_export_pipeline(
                 integrations=integrations,
             )
 
-        if config.export.configuration_files and cfg_files:
+        if config.export.configuration_summary:
+            analysis_data = analyze_all_configuration(
+                config_dir=config_dir,
+                entities=entity_models,
+                devices=device_models,
+                areas=area_models,
+                labels=label_models,
+            )
+            export_ai_configuration_summary(
+                output_dir=staging_dir,
+                analysis_data=analysis_data,
+            )
+            if analysis_data.get("warnings"):
+                warnings.extend(analysis_data["warnings"])
+
+        if config.advanced.raw_configuration_export and cfg_files:
             export_config_yaml(output_dir=staging_dir, config_files=cfg_files)
 
         warnings_count = len(warnings) + sanitizer.report.warnings_count
@@ -371,7 +388,8 @@ def _execute_export_pipeline(
         # Generate Safe Export Preview Manifest
         export_config_dict = {
             "ai": True,
-            "config": config.export.configuration_files,
+            "configuration_summary": config.export.configuration_summary,
+            "raw_configuration_export": config.advanced.raw_configuration_export,
             "inventory": config.export.entities,
             "metadata": True,
             "references": config.export.relationships,
@@ -379,36 +397,84 @@ def _execute_export_pipeline(
         }
         status_mgr.write_preview_manifest(staging_dir, export_config_dict, warnings)
 
-        # 5. Secret Scanner Gate on temporary staging directory
+        # 5. Secret Scanner Gate on temporary staging directory with Partial Publication
         scanner = SecretScanner()
         scan_res = scanner.scan_directory(staging_dir)
+        raw_export_blocked = False
+
         if scan_res.has_secrets:
             manifest_data = status_mgr.write_failed_manifest(scan_res.detailed_findings)
-            msg = (
-                f"Secret Scanner blocked export: {scan_res.findings[0]} "
-                f"({manifest_data['total_findings']} total findings). "
-                f"Safe manifest written to {status_mgr.failed_manifest_file}"
+            raw_dir = staging_dir / "config"
+
+            # Check if findings are isolated to raw config/ export
+            all_in_raw = (
+                raw_dir.exists()
+                and scan_res.detailed_findings
+                and all(
+                    d.relative_path.startswith("config/") or d.relative_path.startswith("config\\")
+                    for d in scan_res.detailed_findings
+                )
             )
-            logger.error(msg)
-            status_mgr.update_status(
-                status_str="blocked",
-                last_error=msg,
-                secret_scan_status="BLOCKED",
-                counts={
-                    "entities": entities_count,
-                    "devices": devices_count,
-                    "warnings": warnings_count,
-                },
-            )
-            shutil.rmtree(staging_dir, ignore_errors=True)
-            return False
+
+            if all_in_raw:
+                logger.warning(
+                    "Secret Scanner detected secrets in raw configuration files. "
+                    "Pruning raw config/ output from staging to allow safe summary publication."
+                )
+                shutil.rmtree(raw_dir, ignore_errors=True)
+                rescan_res = scanner.scan_directory(staging_dir)
+
+                if not rescan_res.has_secrets:
+                    raw_export_blocked = True
+                    msg = (
+                        "Raw configuration export blocked by Secret Scanner due to sensitive "
+                        "fields. Safe AI configuration summaries and inventory outputs were "
+                        "preserved and published."
+                    )
+                    logger.info(msg)
+                else:
+                    # Non-raw outputs also failed secret scanner -> fail closed
+                    msg = f"Secret Scanner blocked export: {rescan_res.findings[0]}"
+                    logger.error(msg)
+                    status_mgr.update_status(
+                        status_str="blocked",
+                        last_error=msg,
+                        secret_scan_status="BLOCKED",
+                        counts={
+                            "entities": entities_count,
+                            "devices": devices_count,
+                            "warnings": warnings_count,
+                        },
+                    )
+                    shutil.rmtree(staging_dir, ignore_errors=True)
+                    return False
+            else:
+                msg = (
+                    f"Secret Scanner blocked export: {scan_res.findings[0]} "
+                    f"({manifest_data['total_findings']} total findings). "
+                    f"Safe manifest written to {status_mgr.failed_manifest_file}"
+                )
+                logger.error(msg)
+                status_mgr.update_status(
+                    status_str="blocked",
+                    last_error=msg,
+                    secret_scan_status="BLOCKED",
+                    counts={
+                        "entities": entities_count,
+                        "devices": devices_count,
+                        "warnings": warnings_count,
+                    },
+                )
+                shutil.rmtree(staging_dir, ignore_errors=True)
+                return False
 
         # 6. Clean replacement of generated staging directory
         if final_staging_dir.exists():
             shutil.rmtree(final_staging_dir)
         shutil.move(str(staging_dir), str(final_staging_dir))
 
-        status_mgr.clear_failed_manifest()
+        if not raw_export_blocked:
+            status_mgr.clear_failed_manifest()
         status_mgr.write_generated_output_manifest(final_staging_dir)
 
         # 7. Git repository operations
@@ -499,7 +565,7 @@ def _execute_export_pipeline(
                 status_str="success",
                 last_commit=commit_info,
                 git_connection_status="connected",
-                secret_scan_status="PASS",
+                secret_scan_status="BLOCKED" if raw_export_blocked else "PASS",
                 counts=counts_dict,
             )
         else:
@@ -508,7 +574,7 @@ def _execute_export_pipeline(
                 status_str="no_changes",
                 last_commit="no_changes",
                 git_connection_status="connected",
-                secret_scan_status="PASS",
+                secret_scan_status="BLOCKED" if raw_export_blocked else "PASS",
                 counts=counts_dict,
             )
 

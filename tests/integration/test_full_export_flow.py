@@ -68,7 +68,7 @@ def test_full_export_flow_local_area_inheritance_and_relationships(tmp_path):
             integrations=True,
             relationships=True,
             automations=False,
-            configuration_files=False,
+            configuration_summary=True,
         ),
     )
 

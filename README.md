@@ -77,10 +77,13 @@ export:
   integrations: true
   relationships: true
   automations: true
-  configuration_files: false
+  configuration_summary: true
   dashboards: false
   custom_components: false
   www: false
+
+advanced:
+  raw_configuration_export: false # WARNING: Copies raw YAML files into config/. Disabled by default.
 
 sanitization:
   enabled: true

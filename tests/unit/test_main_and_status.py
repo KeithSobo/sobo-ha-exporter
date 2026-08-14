@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.config import AppConfig
+from app.config import AppConfig, parse_config_dict
 from app.github.deploy_key import DeployKeyError
 from app.main import get_ha_timezone, main, run_export, sanitize_error_message, update_status
 
@@ -124,20 +124,42 @@ def test_secret_scanner_failure_writes_safe_manifest_and_cleans_staging(tmp_path
     config = AppConfig(
         repository="git@github.com:KeithSobo/sobo-ha-exporter.git",
         branch="main",
-        export=MagicMock(
-            entities=False,
-            devices=False,
-            areas=False,
-            labels=False,
-            integrations=False,
-            relationships=False,
-            automations=False,
-            configuration_files=True,
-            dashboards=False,
-            custom_components=False,
-            www=False,
-        ),
+        export=parse_config_dict({"repository": "git@github.com:KeithSobo/sobo-ha-exporter.git"}).export,
     )
+    config.export.entities = True
+    config.export.configuration_summary = False
+    mock_entity = type(
+        "Entity",
+        (),
+        {
+            "entity_id": "sensor.secret",
+            "name": f"leaked {secret_str}",
+            "original_name": "secret",
+            "domain": "sensor",
+            "platform": "test",
+            "state": "on",
+            "attributes": {},
+            "device_id": None,
+            "device_name": None,
+            "area_id": None,
+            "area_name": None,
+            "effective_area_id": None,
+            "effective_area_name": None,
+            "labels": [],
+            "disabled_by": None,
+            "hidden_by": None,
+            "unit_of_measurement": None,
+            "device_class": None,
+            "icon": None,
+            "entity_category": None,
+            "to_dict": lambda self: {
+                "entity_id": "sensor.secret",
+                "name": f"leaked {secret_str}",
+                "domain": "sensor",
+                "platform": "test",
+            },
+        },
+    )()
 
     mock_ha_client = MagicMock()
     mock_ha_client.validate_connection.return_value = True
@@ -145,6 +167,7 @@ def test_secret_scanner_failure_writes_safe_manifest_and_cleans_staging(tmp_path
     with (
         patch("app.main.ensure_deploy_key") as mock_key,
         patch("app.main.HomeAssistantClient", return_value=mock_ha_client),
+        patch("app.main.collect_entities", return_value=[mock_entity]),
     ):
         mock_key.return_value = (
             tmp_path / "priv",

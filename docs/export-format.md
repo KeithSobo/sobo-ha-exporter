@@ -42,6 +42,33 @@ Compact, deterministic, navigable reference outputs designed for AI context inge
 - **`ai/impact-index.json`**: Reverse-dependency index mapping entities, devices, and areas to automations, scripts, and dashboards.
 - **`ai/search-index.json`**: Search records with normalized keyword arrays for AI context retrieval.
 
+### AI Configuration Summaries (`ai/configuration/`)
+
+Generated when `export.configuration_summary: true` (default):
+
+- **`ai/configuration/README.md`**: Explanation of generated summaries vs raw backups.
+- **`ai/configuration/overview.md`**: Analyzed file counts, warnings, node counts, integration flags.
+- **`ai/configuration/home-assistant.md`**: Top-level domain analysis and sensitive section status (`configured` / `redacted` / `secret reference`).
+- **`ai/configuration/esphome.md`**: ESPHome node features, platform/board, components, pins, and auth status (zero real secret values).
+- **`ai/configuration/packages.md`**: Discovered package files and domains.
+- **`ai/configuration/automations.md`**: Automation structural counts and summaries.
+- **`ai/configuration/scripts.md`**: Script structural summaries.
+- **`ai/configuration/scenes.md`**: Scene structural summaries.
+- **`ai/configuration/dashboards.md`**: UI and YAML dashboard counts.
+- **`ai/configuration/mqtt.md`**: MQTT broker source, discovery, TLS, and auth status (no broker credentials).
+- **`ai/configuration/frigate.md`**: Frigate NVR cameras, detectors, recording, go2rtc status (no RTSP credentials).
+- **`ai/configuration/zigbee2mqtt.md`**: Zigbee2MQTT frontend and MQTT status (no network keys).
+- **`ai/configuration/custom-components.md`**: Custom component metadata and manifests.
+- **`ai/configuration/warnings.md`**: Consolidated analysis warnings.
+
+## Raw Configuration Export (`config/`)
+
+Generated ONLY when `advanced.raw_configuration_export: true` (disabled by default):
+
+- Contains sanitized raw YAML configuration files.
+- Excludes `secrets.yaml`, `.storage`, databases, logs, backups, certificates, and private keys.
+- Secret-scanned prior to publication; publication is blocked if unhandled secrets remain.
+
 ## Markdown Summaries (`summaries/`)
 
 - **`summaries/entity-summary.md`**

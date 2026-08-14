@@ -170,9 +170,16 @@ class StatusManager:
             ext = f.suffix.lower() or "no_extension"
             extension_stats[ext] = extension_stats.get(ext, 0) + 1
 
-        for cat in ["ai", "config", "inventory", "metadata", "references", "summaries"]:
+        for cat, key_name in [
+            ("ai", "configuration_summary"),
+            ("config", "raw_configuration_export"),
+            ("inventory", "inventory"),
+            ("metadata", "metadata"),
+            ("references", "references"),
+            ("summaries", "summaries"),
+        ]:
             if cat not in category_stats:
-                is_enabled = export_config_data.get(cat, True)
+                is_enabled = export_config_data.get(key_name, export_config_data.get(cat, True))
                 category_stats[cat] = {
                     "file_count": 0,
                     "size_bytes": 0,

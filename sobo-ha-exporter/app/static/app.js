@@ -70,6 +70,20 @@
       ? `Enabled (${data.schedule_time || "03:00"} ${data.schedule_timezone || "UTC"})`
       : "Disabled";
     document.getElementById("ov-schedule").textContent = schedText;
+
+    const elCfgSum = document.getElementById("ov-cfg-summary");
+    if (elCfgSum) elCfgSum.textContent = "Generated Safely";
+
+    const elRawCfg = document.getElementById("ov-raw-cfg");
+    if (elRawCfg) {
+      if (data.secret_scan_status === "BLOCKED") {
+        elRawCfg.innerHTML =
+          '<span class="status-badge status-blocked">BLOCKED BY SECRET SCANNER</span>';
+      } else {
+        elRawCfg.textContent = data.raw_configuration_export ? "Enabled" : "Disabled (Default)";
+      }
+    }
+
     document.getElementById("ov-secret-scan").textContent = data.secret_scan_status || "NOT_RUN";
     document.getElementById("ov-git-conn").textContent = data.git_connection_status || "untested";
 
@@ -147,7 +161,7 @@
     }
 
     bannerEl.className = "diag-banner status-blocked";
-    bannerEl.textContent = `Secret Scanner Result: BLOCKED (${data.total_findings || data.findings.length} findings detected)`;
+    bannerEl.textContent = `Secret Scanner Result: BLOCKED (${data.total_findings || data.findings.length} findings detected). Raw configuration export blocked. Configuration summary may still be available.`;
     wrapperEl.style.display = "block";
 
     tbody.innerHTML = "";

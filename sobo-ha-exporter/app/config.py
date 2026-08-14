@@ -1,10 +1,13 @@
 """Configuration parser and validator for Sobo HA Exporter."""
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class ConfigurationError(Exception):
@@ -39,10 +42,15 @@ class ExportConfig:
     integrations: bool = True
     relationships: bool = True
     automations: bool = True
-    configuration_files: bool = False
+    configuration_summary: bool = True
     dashboards: bool = False
     custom_components: bool = False
     www: bool = False
+
+
+@dataclass
+class AdvancedConfig:
+    raw_configuration_export: bool = False
 
 
 @dataclass
@@ -70,6 +78,7 @@ class AppConfig:
     branch: str = "main"
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
     export: ExportConfig = field(default_factory=ExportConfig)
+    advanced: AdvancedConfig = field(default_factory=AdvancedConfig)
     sanitization: SanitizationConfig = field(default_factory=SanitizationConfig)
     git: GitConfig = field(default_factory=GitConfig)
 
@@ -167,6 +176,16 @@ def parse_config_dict(data: dict[str, Any]) -> AppConfig:
     )
 
     exp_raw = data.get("export", {})
+    cfg_summary = True
+    if "configuration_summary" in exp_raw:
+        cfg_summary = bool(exp_raw["configuration_summary"])
+    elif "configuration_files" in exp_raw:
+        cfg_summary = bool(exp_raw["configuration_files"])
+        logger.info(
+            "The deprecated configuration_files option was migrated to configuration_summary. "
+            "Raw configuration export remains disabled."
+        )
+
     exp = ExportConfig(
         entities=bool(exp_raw.get("entities", True)),
         devices=bool(exp_raw.get("devices", True)),
@@ -175,10 +194,15 @@ def parse_config_dict(data: dict[str, Any]) -> AppConfig:
         integrations=bool(exp_raw.get("integrations", True)),
         relationships=bool(exp_raw.get("relationships", True)),
         automations=bool(exp_raw.get("automations", True)),
-        configuration_files=bool(exp_raw.get("configuration_files", False)),
+        configuration_summary=cfg_summary,
         dashboards=bool(exp_raw.get("dashboards", False)),
         custom_components=bool(exp_raw.get("custom_components", False)),
         www=bool(exp_raw.get("www", False)),
+    )
+
+    adv_raw = data.get("advanced", {})
+    adv = AdvancedConfig(
+        raw_configuration_export=bool(adv_raw.get("raw_configuration_export", False)),
     )
 
     san_raw = data.get("sanitization", {})
@@ -205,6 +229,7 @@ def parse_config_dict(data: dict[str, Any]) -> AppConfig:
         branch=branch,
         schedule=sched,
         export=exp,
+        advanced=adv,
         sanitization=san,
         git=git_cfg,
     )
