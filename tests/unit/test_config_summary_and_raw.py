@@ -225,3 +225,46 @@ def test_partial_publication_when_raw_export_blocked(tmp_path, monkeypatch):
         status_file = data_dir / "status" / "status.json"
         status_data = json.loads(status_file.read_text(encoding="utf-8"))
         assert status_data["secret_scan_status"] == "BLOCKED"
+
+
+def test_analyze_packages_mqtt_cc(tmp_path):
+    from app.analyzers.config_analyzers import (
+        analyze_custom_components,
+        analyze_mqtt,
+        analyze_packages,
+    )
+
+    config_dir = tmp_path / "config"
+    packages_dir = config_dir / "packages"
+    packages_dir.mkdir(parents=True)
+    (packages_dir / "climate.yaml").write_text("climate:\n  - platform: generic_thermostat\n")
+
+    cc_dir = config_dir / "custom_components" / "my_comp"
+    cc_dir.mkdir(parents=True)
+    (cc_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "domain": "my_comp",
+                "name": "My Component",
+                "version": "1.0.0",
+                "config_flow": True,
+                "documentation": "https://example.com",
+            }
+        )
+    )
+
+    parser = SafeYamlParser(config_dir)
+
+    pkg_sum = analyze_packages({}, config_dir, parser)
+    assert len(pkg_sum["packages"]) == 1
+    assert pkg_sum["packages"][0]["package_file"] == "packages/climate.yaml"
+
+    mqtt_sum = analyze_mqtt(
+        {"mqtt": {"broker": "localhost", "password": "pass"}}, config_dir, parser, []
+    )
+    assert mqtt_sum["detected"] is True
+    assert mqtt_sum["password_configured"] == "configured"
+
+    cc_sum = analyze_custom_components(config_dir, [], [])
+    assert len(cc_sum["components"]) == 1
+    assert cc_sum["components"][0]["domain"] == "my_comp"

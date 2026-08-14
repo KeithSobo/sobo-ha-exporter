@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from app import __version__
 from app.analyzers.config_analyzers import analyze_all_configuration
 from app.collectors.areas import collect_areas
-from app.collectors.automations import collect_automations
+from app.collectors.automations import collect_automation_models
 from app.collectors.configuration import collect_configuration_files
 from app.collectors.dashboards import collect_dashboards
 from app.collectors.devices import collect_devices
@@ -32,16 +32,20 @@ from app.exporters import (
     export_config_yaml,
     export_summaries_markdown,
 )
+from app.exporters.ai_exporter import parse_scripts_detailed
 from app.exporters.json_exporter import (
+    build_entity_usage_map,
     export_inventory_json,
     export_metadata_json,
+    export_panels_json,
     export_references_json,
 )
 from app.github.deploy_key import ensure_deploy_key, log_deploy_key_banner
 from app.github.git_client import GitClient, GitClientError
 from app.github.repository import RepositoryManager, RepositoryManagerError
 from app.ha_client import HomeAssistantClient
-from app.models.dashboard import DashboardModel
+from app.models.automation import AutomationModel
+from app.models.dashboard import DashboardModel, PanelModel
 from app.models.relationship import RelationshipModel
 from app.security.sanitizer import DataSanitizer
 from app.security.secret_scanner import SecretScanner
@@ -142,11 +146,9 @@ def calculate_next_scheduled_run(
         parts = time_str.strip().split(":")
         target_hour = int(parts[0])
         target_minute = int(parts[1])
+        target = reference.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
     except Exception:
-        target_hour = 3
-        target_minute = 0
-
-    target = reference.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+        target = reference.replace(hour=3, minute=0, second=0, microsecond=0)
     if target <= reference:
         target += timedelta(days=1)
 
@@ -287,16 +289,16 @@ def _execute_export_pipeline(
             else []
         )
 
-        auto_entity_map: dict[str, list[str]] = {}
+        auto_models: list[AutomationModel] = []
         if config.export.automations:
-            auto_entity_map_raw, auto_warnings = collect_automations(config_dir)
-            auto_entity_map = {k: list(v) for k, v in auto_entity_map_raw.items()}
+            auto_models, auto_warnings = collect_automation_models(config_dir)
             warnings.extend(auto_warnings)
 
         dashboards: list[DashboardModel] = []
+        panels: list[PanelModel] = []
         dash_discovery_error: str | None = None
         if config.export.dashboards:
-            dashboards, dash_warns, dash_discovery_error = collect_dashboards(
+            dashboards, panels, dash_warns, dash_discovery_error = collect_dashboards(
                 client=client,
                 config_dir=config_dir,
                 entities=entity_models,
@@ -322,6 +324,19 @@ def _execute_export_pipeline(
             for ent_id in d_ents:
                 rel_model.entity_to_dashboards.setdefault(ent_id, []).append(d.title)
 
+        for m in auto_models:
+            rel_model.automation_to_entities[m.alias] = m.entities
+            for ent_id in m.entities:
+                rel_model.entity_to_automations.setdefault(ent_id, []).append(m.alias)
+
+        scripts_detailed = parse_scripts_detailed(config_dir)
+        entity_usage_data = build_entity_usage_map(
+            automation_models=auto_models,
+            scripts_detailed=scripts_detailed,
+            dashboards=dashboards,
+            entities=entity_models,
+        )
+
         # 3. Apply Security Sanitizer
         sanitizer = DataSanitizer(config.sanitization)
         entity_models = [sanitizer.sanitize_entity(e) for e in entity_models]
@@ -342,7 +357,14 @@ def _execute_export_pipeline(
                 relationships=rel_model,
                 dashboards=dashboards if config.export.dashboards else None,
             )
-            export_references_json(output_dir=staging_dir, relationships=rel_model)
+            if config.export.dashboards and panels:
+                export_panels_json(output_dir=staging_dir, panels=panels)
+
+            export_references_json(
+                output_dir=staging_dir,
+                relationships=rel_model,
+                entity_usage_data=entity_usage_data,
+            )
             export_summaries_markdown(
                 output_dir=staging_dir,
                 entities=entity_models,
@@ -399,6 +421,8 @@ def _execute_export_pipeline(
             warnings=warnings,
             dashboards=dashboards,
             dash_discovery_error=dash_discovery_error,
+            automation_models=auto_models,
+            panels=panels,
         )
 
         export_metadata_json(
@@ -585,9 +609,19 @@ def _execute_export_pipeline(
             "areas": len(area_models),
             "labels": len(label_models),
             "integrations": len(integrations),
-            "automations": len(auto_entity_map),
+            "automations": len(auto_models),
             "helpers": helpers_count,
             "dashboards": len(dashboards),
+            "lovelace_dashboards": len(dashboards),
+            "strategy_dashboards": len([p for p in panels if p.panel_type == "lovelace_strategy"]),
+            "builtin_panels": len([p for p in panels if p.panel_type == "builtin_panel"]),
+            "integration_panels": len(
+                [
+                    p
+                    for p in panels
+                    if p.panel_type in ["integration_panel", "redirect_panel", "unknown_panel"]
+                ]
+            ),
             "dashboard_views": dash_view_cnt,
             "dashboard_cards": dash_card_cnt,
             "dashboard_custom_cards": dash_custom_cnt,

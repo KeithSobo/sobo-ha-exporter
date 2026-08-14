@@ -2,6 +2,18 @@
 
 All notable changes to the Sobo Home Assistant Exporter add-on will be documented in this file.
 
+## [0.3.3] - 2026-08-14
+
+### Added
+
+- Comprehensive automation discovery across `automations.yaml`, `configuration.yaml` includes (`!include`, `!include_dir_list`, `!include_dir_merge_list`, `!include_dir_named`), packages, top-level lists, and ID-keyed mappings.
+- Normalized `AutomationModel` with detailed reference extraction for triggers, conditions, actions, called services, target blocks, devices, areas, helpers, called scripts/scenes/automations, event types, and navigation targets.
+- Jinja template pattern matching for entity IDs (`states()`, `is_state()`, `state_attr()`, `is_state_attr()`, `states.domain.entity.state`, `expand()`).
+- Inverted entity usage map output (`references/entity-usage.json`) combining automations, scripts, and dashboards with usage context (`trigger`, `condition`, `action`, `template`, `target`).
+- Home Assistant panel classification model (`lovelace_storage`, `lovelace_yaml`, `lovelace_strategy`, `builtin_panel`, `integration_panel`, `redirect_panel`, `unknown_panel`) via WebSocket `get_panels`.
+- Panel inventory tracking (`inventory/panels.json`) and categorized dashboard overview (`ai/dashboards/overview.md`).
+- Lovelace config retrieval rules preventing empty dashboard entries and non-fatal fetch errors for built-in panels.
+
 ## [0.3.2] - 2026-08-14
 
 ### Fixed

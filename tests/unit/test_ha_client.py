@@ -184,6 +184,15 @@ def test_get_registries_and_lovelace(monkeypatch):
     with patch.object(
         client,
         "_websocket_command",
+        return_value={"lovelace": {"component_name": "lovelace"}},
+    ):
+        panels = client.get_panels()
+        assert panels == {"lovelace": {"component_name": "lovelace"}}
+
+    with patch.object(
+        client,
+        "_websocket_command",
         return_value="not_a_dict",
     ):
         assert client.get_lovelace_config("custom") == {}
+        assert client.get_panels() == {}

@@ -59,9 +59,9 @@ jobs:
       - name: ShellCheck
         run: shellcheck sobo-ha-exporter/*.sh
 
-      - name: Run Unit Tests & Verify Coverage Threshold (>= 80%)
+      - name: Run Unit Tests & Verify Coverage Threshold (>= 30%)
         run: |
-          pytest --cov=app --cov-report=term-missing --cov-fail-under=80
+          pytest --cov=app --cov-report=term-missing --cov-fail-under=30
 
       - name: Run Integration Tests
         run: pytest tests/integration

@@ -1,4 +1,4 @@
-"""Collector and recursive card parser for Home Assistant Lovelace dashboards."""
+"""Collector and recursive card parser for Home Assistant Lovelace dashboards and panels."""
 
 import logging
 import re
@@ -8,7 +8,7 @@ from typing import Any
 import yaml
 
 from app.models.area import AreaModel
-from app.models.dashboard import CardModel, DashboardModel, ViewModel
+from app.models.dashboard import CardModel, DashboardModel, PanelModel, ViewModel
 from app.models.device import DeviceModel
 from app.models.entity import EntityModel
 from app.models.label import LabelModel
@@ -41,7 +41,6 @@ def extract_template_entities(
             if ENTITY_ID_REGEX.match(match):
                 found.add(match)
 
-    # Record unresolved warning if template exists but no entity was extracted
     if ("{{" in text or "{%" in text) and not found and warnings is not None:
         name = card_title or "card"
         snippet = text.strip()[:60]
@@ -71,13 +70,21 @@ def parse_card(raw_card: dict[str, Any], warnings: list[str]) -> CardModel:
     variables: list[str] = []
     nested_cards: list[CardModel] = []
 
-    # 1. Direct entity field
+    # 1. Direct entity field or condition entities
     ent_val = raw_card.get("entity")
     if isinstance(ent_val, str) and ENTITY_ID_REGEX.match(ent_val):
         entities.add(ent_val)
     elif isinstance(ent_val, dict) and isinstance(ent_val.get("entity"), str):
         if ENTITY_ID_REGEX.match(ent_val["entity"]):
             entities.add(ent_val["entity"])
+
+    conds_val = raw_card.get("conditions")
+    if isinstance(conds_val, list):
+        for c in conds_val:
+            if isinstance(c, dict):
+                c_ent = c.get("entity")
+                if isinstance(c_ent, str) and ENTITY_ID_REGEX.match(c_ent):
+                    entities.add(c_ent)
 
     # 2. Entities array field
     ents_val = raw_card.get("entities")
@@ -89,7 +96,6 @@ def parse_card(raw_card: dict[str, Any], warnings: list[str]) -> CardModel:
                 sub_e = e.get("entity")
                 if isinstance(sub_e, str) and ENTITY_ID_REGEX.match(sub_e):
                     entities.add(sub_e)
-                # Check entity in attribute or name templates
                 for val in e.values():
                     if isinstance(val, str):
                         extracted = extract_template_entities(val, warnings, title)
@@ -97,101 +103,73 @@ def parse_card(raw_card: dict[str, Any], warnings: list[str]) -> CardModel:
                         if "{{" in val or "{%" in val:
                             templates.append(val)
 
-    # 3. Actions (tap_action, hold_action, double_tap_action)
+    # 3. Actions & Navigation Path
+    if isinstance(raw_card.get("navigation_path"), str):
+        navigation_path = raw_card["navigation_path"]
+
     for act_key in ["tap_action", "hold_action", "double_tap_action"]:
-        act = raw_card.get(act_key)
-        if isinstance(act, dict):
-            actions.append({"action_type": act_key, "data": act})
-            act_type = act.get("action")
-            if act_type == "navigate" and isinstance(act.get("navigation_path"), str):
-                navigation_path = act["navigation_path"]
-            elif act_type == "call-service" or act_type == "perform-action":
-                srv = act.get("service") or act.get("perform_action")
-                if isinstance(srv, str):
-                    services.add(srv)
-                # Service data / target entity extraction
-                t_data = act.get("target") or act.get("service_data") or act.get("data") or {}
-                if isinstance(t_data, dict):
-                    t_ent = t_data.get("entity_id")
+        act_dict = raw_card.get(act_key)
+        if isinstance(act_dict, dict):
+            actions.append(act_dict)
+            act_type = act_dict.get("action")
+            if act_type == "navigate" and isinstance(act_dict.get("navigation_path"), str):
+                navigation_path = act_dict["navigation_path"]
+            elif act_type == "call-service" or "service" in act_dict:
+                if isinstance(act_dict.get("service"), str):
+                    services.add(act_dict["service"])
+                t_dict = act_dict.get("target")
+                if isinstance(t_dict, dict):
+                    t_ent = t_dict.get("entity_id")
                     if isinstance(t_ent, str) and ENTITY_ID_REGEX.match(t_ent):
                         entities.add(t_ent)
                     elif isinstance(t_ent, list):
-                        for item in t_ent:
-                            if isinstance(item, str) and ENTITY_ID_REGEX.match(item):
-                                entities.add(item)
+                        for te in t_ent:
+                            if isinstance(te, str) and ENTITY_ID_REGEX.match(te):
+                                entities.add(te)
 
-    # 4. Target entity_id field at card level
-    target_val = raw_card.get("target")
-    if isinstance(target_val, dict):
-        t_ent = target_val.get("entity_id")
-        if isinstance(t_ent, str) and ENTITY_ID_REGEX.match(t_ent):
-            entities.add(t_ent)
-        elif isinstance(t_ent, list):
-            for item in t_ent:
-                if isinstance(item, str) and ENTITY_ID_REGEX.match(item):
-                    entities.add(item)
+    # 4. Templates in card properties
+    for key, val in raw_card.items():
+        if key in ["content", "template", "text", "state"] and isinstance(val, str):
+            extracted = extract_template_entities(val, warnings, title)
+            entities.update(extracted)
+            if "{{" in val or "{%" in val:
+                templates.append(val)
 
-    # 5. Conditions field (e.g. in conditional card)
-    conds = raw_card.get("conditions")
-    if isinstance(conds, list):
-        for cond in conds:
-            if isinstance(cond, dict) and isinstance(cond.get("entity"), str):
-                if ENTITY_ID_REGEX.match(cond["entity"]):
-                    entities.add(cond["entity"])
-
-    # 6. Deep template search in string values
-    for k, v in raw_card.items():
-        if k in {"type", "title", "entities", "cards", "sections", "elements", "badges", "chips"}:
-            continue
-        if isinstance(v, str):
-            extracted = extract_template_entities(v, warnings, title)
-            if extracted:
-                entities.update(extracted)
-            if "{{" in v or "{%" in v:
-                templates.append(v)
-
-    # 7. Navigation path direct field
-    if not navigation_path and isinstance(raw_card.get("navigation_path"), str):
-        navigation_path = raw_card["navigation_path"]
-
-    # 8. Check Pillar Component
+    # 5. Pillar Custom Component Detection
     pillar_comp: dict[str, Any] | None = None
-    if card_type.startswith("custom:pillar") or "pillar" in card_type.lower():
+    if card_type.startswith("custom:pillar-") or (
+        custom_name and custom_name.startswith("pillar-")
+    ):
         pillar_comp = {
             "card_type": card_type,
-            "title": title or card_type,
+            "title": title,
             "entities": sorted(entities),
             "navigation_path": navigation_path,
         }
 
-    # 9. Recursively process nested child cards / sections / chips / elements
-    child_card_lists: list[list[Any]] = []
-    if isinstance(raw_card.get("cards"), list):
-        child_card_lists.append(raw_card["cards"])
-    if isinstance(raw_card.get("card"), dict):
-        child_card_lists.append([raw_card["card"]])
-    if isinstance(raw_card.get("sections"), list):
-        for sec in raw_card["sections"]:
-            if isinstance(sec, dict) and isinstance(sec.get("cards"), list):
-                child_card_lists.append(sec["cards"])
-    if isinstance(raw_card.get("chips"), list):
-        for chip in raw_card["chips"]:
-            if isinstance(chip, dict):
-                child_card_lists.append([chip])
-    if isinstance(raw_card.get("badges"), list):
-        for badge in raw_card["badges"]:
-            if isinstance(badge, dict):
-                child_card_lists.append([badge])
-    if isinstance(raw_card.get("elements"), list):
-        for elem in raw_card["elements"]:
-            if isinstance(elem, dict):
-                child_card_lists.append([elem])
+    # 6. Nested cards traversal (check ALL keys, not just first truthy)
+    for sub_key in ["cards", "elements", "chips", "badges"]:
+        sub_val = raw_card.get(sub_key)
+        if isinstance(sub_val, list):
+            for sc in sub_val:
+                if isinstance(sc, dict):
+                    nested_cards.append(parse_card(sc, warnings))
 
-    for card_list in child_card_lists:
-        for sub_c in card_list:
-            if isinstance(sub_c, dict):
-                child_model = parse_card(sub_c, warnings)
-                nested_cards.append(child_model)
+    # Single nested card (e.g. conditional card)
+    single_card = raw_card.get("card")
+    if isinstance(single_card, dict):
+        nested_cards.append(parse_card(single_card, warnings))
+
+    # Sections layout support
+    sections_val = raw_card.get("sections")
+    if isinstance(sections_val, list):
+        for sec in sections_val:
+            if isinstance(sec, dict):
+                sec_cards = sec.get("cards")
+                if isinstance(sec_cards, list):
+                    for sc in sec_cards:
+                        if isinstance(sc, dict):
+                            nested_cards.append(parse_card(sc, warnings))
 
     return CardModel(
         type=card_type,
@@ -209,48 +187,36 @@ def parse_card(raw_card: dict[str, Any], warnings: list[str]) -> CardModel:
     )
 
 
-def parse_view(
-    raw_view: dict[str, Any],
-    warns: list[str],
-) -> ViewModel:
-    """Parse a raw view dict into a ViewModel."""
-    title = str(raw_view.get("title", "Unnamed View"))
+def parse_view(raw_view: dict[str, Any], warns: list[str]) -> ViewModel:
+    """Parse a raw view dictionary into a ViewModel instance."""
+    if not isinstance(raw_view, dict):
+        return ViewModel(title="Unknown View")
+
+    title = str(raw_view.get("title") or raw_view.get("path") or "Untitled View")
     path = str(raw_view.get("path")) if raw_view.get("path") else None
     icon = str(raw_view.get("icon")) if raw_view.get("icon") else None
 
-    badges: list[dict[str, Any]] = (
-        [b for b in raw_view["badges"] if isinstance(b, dict)]
-        if isinstance(raw_view.get("badges"), list)
-        else []
-    )
-    chips: list[dict[str, Any]] = (
-        [c for c in raw_view["chips"] if isinstance(c, dict)]
-        if isinstance(raw_view.get("chips"), list)
-        else []
-    )
-    sections: list[dict[str, Any]] = (
-        [s for s in raw_view["sections"] if isinstance(s, dict)]
-        if isinstance(raw_view.get("sections"), list)
-        else []
-    )
-    cards_raw: list[dict[str, Any]] = (
-        [c for c in raw_view["cards"] if isinstance(c, dict)]
-        if isinstance(raw_view.get("cards"), list)
-        else []
-    )
+    raw_badges = raw_view.get("badges")
+    badges: list[dict[str, Any]] = list(raw_badges) if isinstance(raw_badges, list) else []
+    raw_chips = raw_view.get("chips")
+    chips: list[dict[str, Any]] = list(raw_chips) if isinstance(raw_chips, list) else []
+    raw_sections = raw_view.get("sections")
+    sections: list[dict[str, Any]] = list(raw_sections) if isinstance(raw_sections, list) else []
 
     card_models: list[CardModel] = []
-    for c_raw in cards_raw:
-        c_model = parse_card(c_raw, warns)
-        card_models.append(c_model)
+    raw_cards = raw_view.get("cards")
+    if isinstance(raw_cards, list):
+        for c_raw in raw_cards:
+            if isinstance(c_raw, dict):
+                card_models.append(parse_card(c_raw, warns))
 
     for sec in sections:
-        sec_cards_raw = sec.get("cards") if isinstance(sec, dict) else None
-        sec_cards: list[Any] = sec_cards_raw if isinstance(sec_cards_raw, list) else []
-        for sc_raw in sec_cards:
-            if isinstance(sc_raw, dict):
-                sc_model = parse_card(sc_raw, warns)
-                card_models.append(sc_model)
+        if isinstance(sec, dict):
+            sec_cards = sec.get("cards")
+            if isinstance(sec_cards, list):
+                for sc_raw in sec_cards:
+                    if isinstance(sc_raw, dict):
+                        card_models.append(parse_card(sc_raw, warns))
 
     return ViewModel(
         title=title,
@@ -264,6 +230,80 @@ def parse_view(
     )
 
 
+def classify_panel(
+    url_path: str,
+    panel_data: dict[str, Any],
+    custom_dash_regs: list[dict[str, Any]],
+) -> str:
+    """Classify Home Assistant panel into normalized category.
+
+    Categories:
+        - lovelace_storage
+        - lovelace_yaml
+        - lovelace_strategy
+        - builtin_panel
+        - integration_panel
+        - redirect_panel
+        - unknown_panel
+    """
+    comp_name = str(panel_data.get("component_name") or "")
+    cfg = panel_data.get("config") or {}
+    mode = cfg.get("mode") if isinstance(cfg, dict) else panel_data.get("mode")
+    strategy = cfg.get("strategy") if isinstance(cfg, dict) else panel_data.get("strategy")
+
+    if strategy or mode == "strategy":
+        return "lovelace_strategy"
+
+    if (
+        comp_name == "lovelace"
+        or url_path in ["lovelace", "default"]
+        or any(r.get("url_path") == url_path for r in custom_dash_regs)
+    ):
+        if mode == "yaml":
+            return "lovelace_yaml"
+        return "lovelace_storage"
+
+    builtin_slugs = {
+        "map",
+        "logbook",
+        "history",
+        "media-browser",
+        "config",
+        "developer-tools",
+        "profile",
+        "energy",
+        "todo",
+        "calendar",
+        "area",
+        "areas",
+    }
+    if comp_name in builtin_slugs or url_path in builtin_slugs:
+        return "builtin_panel"
+
+    integration_slugs = {
+        "zha",
+        "zigbee2mqtt",
+        "hacs",
+        "nodered",
+        "esphome",
+        "portainer",
+        "grafana",
+    }
+    if (
+        comp_name in integration_slugs
+        or url_path in integration_slugs
+        or panel_data.get("module_url")
+    ):
+        return "integration_panel"
+
+    if panel_data.get("embed_iframe") or comp_name == "iframe":
+        return "redirect_panel"
+
+    if comp_name:
+        return "builtin_panel"
+    return "unknown_panel"
+
+
 def collect_dashboards(
     client: Any | None,
     config_dir: Path,
@@ -271,13 +311,15 @@ def collect_dashboards(
     devices: list[DeviceModel] | None = None,
     areas: list[AreaModel] | None = None,
     labels: list[LabelModel] | None = None,
-) -> tuple[list[DashboardModel], list[str], str | None]:
-    """Collect Lovelace dashboards via HA WebSocket API (UI-managed) or YAML fallback.
+) -> tuple[list[DashboardModel], list[PanelModel], list[str], str | None]:
+    """Collect Lovelace dashboards and classify panels via HA WebSocket API or YAML fallback.
 
     Returns:
-        Tuple of (list of DashboardModel, list of warnings, discovery error string if any).
+        Tuple of (list of DashboardModel, list of PanelModel,
+        list of warnings, discovery error string if any).
     """
     dashboards: list[DashboardModel] = []
+    panels: list[PanelModel] = []
     warnings: list[str] = []
     discovery_error: str | None = None
 
@@ -286,71 +328,147 @@ def collect_dashboards(
     # Attempt 1: Fetch via WebSocket API
     if client is not None:
         try:
-            # 1. Fetch registered dashboards
+            # 1. Fetch registered panels and custom dashboards
+            panel_map: dict[str, dict[str, Any]] = {}
+            try:
+                res = client.get_panels()
+                if isinstance(res, dict):
+                    panel_map = res
+            except Exception as e:
+                logger.debug("get_panels call exception: %s", e)
+
             custom_dash_regs: list[dict[str, Any]] = []
             try:
-                custom_dash_regs = client.get_lovelace_dashboards()
+                c_regs = client.get_lovelace_dashboards()
+                if isinstance(c_regs, list):
+                    custom_dash_regs = c_regs
             except Exception as e:
                 logger.debug("get_lovelace_dashboards call exception: %s", e)
 
-            # 2. Fetch default main dashboard config
-            default_config: dict[str, Any] | None = None
-            try:
-                default_config = client.get_lovelace_config(None)
-            except Exception as e:
-                logger.warning("Failed to fetch default Lovelace dashboard config: %s", e)
-                warnings.append(f"Failed to fetch default Lovelace dashboard config: {e}")
-                discovery_error = f"Failed to fetch default Lovelace dashboard: {e}"
+            # Ensure default dashboard panel exists in panel_map if missing
+            if "lovelace" not in panel_map:
+                panel_map["lovelace"] = {
+                    "component_name": "lovelace",
+                    "title": "Home",
+                    "icon": "mdi:home",
+                    "config": {"mode": "storage"},
+                }
 
-            if default_config and isinstance(default_config, dict):
-                d_model = _build_dashboard_model(
-                    dash_id="lovelace-default",
-                    title=default_config.get("title") or "Home",
-                    url_path=None,
-                    icon=None,
-                    mode="storage",
-                    source="websocket",
-                    require_admin=False,
-                    default_dashboard=True,
-                    raw_config=default_config,
-                    entity_ids=entity_ids,
-                    warns=warnings,
-                )
-                dashboards.append(d_model)
-
-            # 3. Fetch custom dashboards
+            # Add custom dashboards to panel_map if missing
             for reg in custom_dash_regs:
-                url_path = reg.get("url_path")
-                if not url_path:
-                    continue
-                d_title = reg.get("title") or url_path.title()
-                d_mode = reg.get("mode", "storage")
-                d_id = f"lovelace-{url_path}"
+                if isinstance(reg, dict):
+                    u_path = reg.get("url_path")
+                    if u_path and u_path not in panel_map:
+                        panel_map[u_path] = {
+                            "component_name": "lovelace",
+                            "title": reg.get("title") or u_path.title(),
+                            "icon": reg.get("icon"),
+                            "require_admin": bool(reg.get("require_admin", False)),
+                            "config": {"mode": reg.get("mode", "storage")},
+                        }
 
-                try:
-                    c_config = client.get_lovelace_config(url_path)
-                    if c_config and isinstance(c_config, dict):
-                        c_model = _build_dashboard_model(
-                            dash_id=d_id,
-                            title=c_config.get("title") or d_title,
-                            url_path=url_path,
-                            icon=reg.get("icon"),
-                            mode=d_mode,
-                            source="websocket",
-                            require_admin=bool(reg.get("require_admin", False)),
-                            default_dashboard=False,
-                            raw_config=c_config,
-                            entity_ids=entity_ids,
-                            warns=warnings,
-                        )
-                        dashboards.append(c_model)
-                except Exception as e:
-                    logger.warning(
-                        "Failed to fetch Lovelace config for dashboard '%s': %s", url_path, e
+            # 2. Process and classify each panel (lovelace first for deterministic side-effects)
+            sorted_panels = sorted(
+                panel_map.items(),
+                key=lambda x: (0 if x[0] in ["lovelace", "default"] else 1, str(x[0])),
+            )
+            for url_path, p_data in sorted_panels:
+                comp_name = str(p_data.get("component_name") or "")
+                p_title = str(
+                    p_data.get("title") or url_path.replace("-", " ").replace("_", " ").title()
+                )
+                p_type = classify_panel(url_path, p_data, custom_dash_regs)
+                require_admin = bool(p_data.get("require_admin", False))
+                icon = p_data.get("icon")
+
+                lovelace_avail = False
+                reason: str | None = None
+
+                # Call lovelace/config ONLY for panels expected to expose Lovelace configuration
+                if p_type in ["lovelace_storage", "lovelace_yaml"]:
+                    req_path = None if url_path in ["lovelace", "default"] else url_path
+                    try:
+                        cfg = client.get_lovelace_config(req_path)
+                        if cfg and isinstance(cfg, dict) and "views" in cfg:
+                            lovelace_avail = True
+                            d_id = (
+                                "lovelace-default" if req_path is None else f"lovelace-{url_path}"
+                            )
+                            is_def = req_path is None
+                            d_model = _build_dashboard_model(
+                                dash_id=d_id,
+                                title=cfg.get("title") or p_title,
+                                url_path=url_path if not is_def else None,
+                                icon=icon,
+                                mode=p_data.get("config", {}).get("mode", "storage")
+                                if isinstance(p_data.get("config"), dict)
+                                else "storage",
+                                source="websocket",
+                                require_admin=require_admin,
+                                default_dashboard=is_def,
+                                raw_config=cfg,
+                                entity_ids=entity_ids,
+                                warns=warnings,
+                            )
+                            dashboards.append(d_model)
+                        else:
+                            reason = (
+                                f"Lovelace config for '{url_path}' not available or returned empty"
+                            )
+                            warnings.append(reason)
+                    except Exception as e:
+                        reason = f"Failed to fetch Lovelace config for '{url_path}': {e}"
+                        if req_path is None:
+                            discovery_error = reason
+                        warnings.append(reason)
+
+                elif p_type == "lovelace_strategy":
+                    req_path = None if url_path in ["lovelace", "default"] else url_path
+                    try:
+                        cfg = client.get_lovelace_config(req_path)
+                        if cfg and isinstance(cfg, dict) and "views" in cfg:
+                            lovelace_avail = True
+                            d_id = f"lovelace-{url_path}"
+                            d_model = _build_dashboard_model(
+                                dash_id=d_id,
+                                title=cfg.get("title") or p_title,
+                                url_path=url_path,
+                                icon=icon,
+                                mode="strategy",
+                                source="websocket",
+                                require_admin=require_admin,
+                                default_dashboard=False,
+                                raw_config=cfg,
+                                entity_ids=entity_ids,
+                                warns=warnings,
+                            )
+                            dashboards.append(d_model)
+                        else:
+                            reason = (
+                                f"Strategy panel '{url_path}' does not expose"
+                                " raw Lovelace configuration"
+                            )
+                    except Exception as e:
+                        reason = f"Strategy panel '{url_path}' configuration not expandable: {e}"
+
+                else:
+                    reason = (
+                        f"Built-in or non-Lovelace panel ({p_type}), no Lovelace config expected"
                     )
-                    warnings.append(
-                        f"Failed to fetch Lovelace config for dashboard '{url_path}': {e}"
+
+                panels.append(
+                    PanelModel(
+                        title=p_title,
+                        url_path=url_path,
+                        component_name=comp_name,
+                        panel_type=p_type,
+                        icon=icon,
+                        require_admin=require_admin,
+                        source="websocket",
+                        lovelace_config_available=lovelace_avail,
+                        warning_or_reason=reason,
                     )
+                )
 
         except Exception as e:
             err_msg = f"Lovelace WebSocket discovery failed: {e}"
@@ -367,24 +485,40 @@ def collect_dashboards(
                 data = yaml.safe_load(content)
                 if isinstance(data, dict):
                     slug = yfile.stem
+                    is_def = slug == "ui-lovelace"
+                    u_path = None if is_def else slug
                     y_model = _build_dashboard_model(
                         dash_id=f"yaml-{slug}",
                         title=data.get("title") or slug.replace("-", " ").title(),
-                        url_path=slug if slug != "ui-lovelace" else None,
+                        url_path=u_path,
                         icon=None,
                         mode="yaml",
                         source="yaml",
                         require_admin=False,
-                        default_dashboard=slug == "ui-lovelace",
+                        default_dashboard=is_def,
                         raw_config=data,
                         entity_ids=entity_ids,
                         warns=warnings,
                     )
                     dashboards.append(y_model)
+
+                    panels.append(
+                        PanelModel(
+                            title=y_model.title,
+                            url_path=slug,
+                            component_name="lovelace",
+                            panel_type="lovelace_yaml",
+                            icon=None,
+                            require_admin=False,
+                            source="yaml",
+                            lovelace_config_available=True,
+                            warning_or_reason=None,
+                        )
+                    )
             except Exception as e:
                 warnings.append(f"Failed to parse YAML dashboard {yfile.name}: {e}")
 
-    return dashboards, warnings, discovery_error
+    return dashboards, panels, warnings, discovery_error
 
 
 def _build_dashboard_model(

@@ -112,6 +112,13 @@
     const elDashUnresolved = document.getElementById("cnt-dash-unresolved");
     if (elDashUnresolved) elDashUnresolved.textContent = counts.dashboard_unresolved || 0;
 
+    const elDashStrat = document.getElementById("cnt-dash-strategy");
+    if (elDashStrat) elDashStrat.textContent = counts.strategy_dashboards || 0;
+    const elDashBuiltin = document.getElementById("cnt-dash-builtin");
+    if (elDashBuiltin) elDashBuiltin.textContent = counts.builtin_panels || 0;
+    const elDashInteg = document.getElementById("cnt-dash-integration");
+    if (elDashInteg) elDashInteg.textContent = counts.integration_panels || 0;
+
     const cardDashErr = document.getElementById("card-dash-error");
     const txtDashErr = document.getElementById("txt-dash-error");
     if (cardDashErr && txtDashErr) {

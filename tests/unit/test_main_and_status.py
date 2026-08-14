@@ -75,7 +75,7 @@ def test_pipeline_execution_with_dashboards(tmp_path, monkeypatch):
         patch("app.main.collect_devices", return_value=[]),
         patch("app.main.collect_areas", return_value=[]),
         patch("app.main.collect_labels", return_value=[]),
-        patch("app.main.collect_dashboards", return_value=([], [], None)),
+        patch("app.main.collect_dashboards", return_value=([], [], [], None)),
     ):
         mock_repo = MagicMock()
         mock_repo_mgr_cls.return_value.prepare_repository.return_value = mock_repo
@@ -239,3 +239,29 @@ def test_secret_scanner_failure_writes_safe_manifest_and_cleans_staging(tmp_path
         # Ensure staging dir was cleaned up
         staging_dir = data_dir / "generated_staging"
         assert not staging_dir.exists()
+
+
+def test_sanitize_error_message_tokens():
+    from app.main import sanitize_error_message
+
+    msg = "Error using bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+    sanitized = sanitize_error_message(msg)
+    assert "eyJhb" not in sanitized
+    assert "[REDACTED_TOKEN]" in sanitized
+
+
+def test_update_status_counts(tmp_path):
+    from app.main import update_status
+
+    status_dir = tmp_path / "status"
+    update_status(
+        status_dir=status_dir,
+        status_str="success",
+        entities_count=10,
+        devices_count=5,
+    )
+    status_file = status_dir / "status.json"
+    assert status_file.exists()
+    data = json.loads(status_file.read_text(encoding="utf-8"))
+    assert data["status"] == "success"
+    assert data["counts"]["entities"] == 10

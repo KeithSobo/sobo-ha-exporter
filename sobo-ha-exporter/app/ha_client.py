@@ -221,11 +221,22 @@ class HomeAssistantClient:
             )
         return res
 
+    def get_panels(self) -> dict[str, dict[str, Any]]:
+        """Fetch registered Home Assistant panels via WebSocket.
+
+        Returns:
+            Dictionary mapping panel url_path to panel metadata dictionary.
+        """
+        res = self._websocket_command("get_panels")
+        if isinstance(res, dict):
+            return res
+        return {}
+
     def get_lovelace_config(self, url_path: str | None = None) -> dict[str, Any]:
         """Fetch configuration for a specific Lovelace dashboard via WebSocket.
 
         Args:
-            url_path: Optional dashboard URL path (None for default dashboard).
+            url_path: Optional dashboard URL path (None or empty for default dashboard).
 
         Returns:
             Dictionary containing dashboard configuration (title, views, cards, etc.).
@@ -233,8 +244,6 @@ class HomeAssistantClient:
         payload: dict[str, Any] = {"type": "lovelace/config"}
         if url_path:
             payload["url_path"] = url_path
-        else:
-            payload["url_path"] = None
 
         res = self._websocket_command(payload)
         if isinstance(res, dict):

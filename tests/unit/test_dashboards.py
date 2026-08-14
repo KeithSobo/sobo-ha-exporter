@@ -152,7 +152,7 @@ def test_collect_dashboards_websocket_storage_mode(tmp_path):
         EntityModel(entity_id="sensor.router_status", name="Router Status"),
     ]
 
-    dashboards, _warns, discovery_err = collect_dashboards(
+    dashboards, panels, _warns, discovery_err = collect_dashboards(
         client=mock_client,
         config_dir=tmp_path,
         entities=entities,
@@ -160,6 +160,7 @@ def test_collect_dashboards_websocket_storage_mode(tmp_path):
 
     assert discovery_err is None
     assert len(dashboards) == 2
+    assert len(panels) >= 2
 
     # Default dashboard check
     def_dash = next(d for d in dashboards if d.default_dashboard)
@@ -192,7 +193,7 @@ views:
 
     entities = [EntityModel(entity_id="cover.garage_door", name="Garage Door")]
 
-    dashboards, _warns, discovery_err = collect_dashboards(
+    dashboards, panels, _warns, discovery_err = collect_dashboards(
         client=None,
         config_dir=config_dir,
         entities=entities,
@@ -200,6 +201,7 @@ views:
 
     assert discovery_err is None
     assert len(dashboards) == 1
+    assert len(panels) == 1
     dash = dashboards[0]
 
     assert dash.id == "yaml-ui-lovelace"
@@ -211,6 +213,7 @@ views:
 
 def test_collect_dashboards_discovery_failure_handling(tmp_path):
     mock_client = MagicMock()
+    mock_client.get_panels.side_effect = HomeAssistantClientError("WebSocket connection refused")
     mock_client.get_lovelace_dashboards.side_effect = HomeAssistantClientError(
         "WebSocket connection refused"
     )
@@ -218,7 +221,7 @@ def test_collect_dashboards_discovery_failure_handling(tmp_path):
         "WebSocket connection refused"
     )
 
-    dashboards, warns, discovery_err = collect_dashboards(
+    dashboards, _panels, warns, discovery_err = collect_dashboards(
         client=mock_client,
         config_dir=tmp_path,
     )
@@ -406,11 +409,11 @@ def test_collect_dashboards_custom_dashboards_error(tmp_path):
         HomeAssistantClientError("Dashboard not found"),
     ]
 
-    dashboards, warns, discovery_err = collect_dashboards(
+    dashboards, _panels, warns, discovery_err = collect_dashboards(
         client=mock_client,
         config_dir=tmp_path,
     )
 
     assert discovery_err is None
     assert len(dashboards) == 1
-    assert any("Failed to fetch Lovelace config for dashboard 'broken'" in w for w in warns)
+    assert any("Failed to fetch Lovelace config for 'broken'" in w for w in warns)

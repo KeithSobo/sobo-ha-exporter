@@ -131,3 +131,30 @@ class DashboardModel:
             "warnings": self.warnings,
             "views": [v.to_dict() for v in self.views],
         }
+
+
+@dataclass
+class PanelModel:
+    title: str
+    url_path: str
+    component_name: str
+    panel_type: str
+    icon: str | None = None
+    require_admin: bool = False
+    source: str = "websocket"
+    lovelace_config_available: bool = False
+    warning_or_reason: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert PanelModel instance to dictionary."""
+        return {
+            "title": self.title,
+            "url_path": self.url_path,
+            "component_name": self.component_name,
+            "panel_type": self.panel_type,
+            "icon": self.icon,
+            "require_admin": self.require_admin,
+            "source": self.source,
+            "lovelace_config_available": self.lovelace_config_available,
+            "warning_or_reason": self.warning_or_reason,
+        }

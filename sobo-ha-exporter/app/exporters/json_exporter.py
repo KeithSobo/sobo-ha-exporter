@@ -79,9 +79,23 @@ def export_dashboards_json(
     write_stable_json(inv_dir / "dashboards.json", dash_data)
 
 
+def export_panels_json(
+    output_dir: Path,
+    panels: list[Any],
+) -> None:
+    """Export panels inventory file into inventory/panels.json."""
+    inv_dir = output_dir / "inventory"
+    panel_data = [
+        p.to_dict() if hasattr(p, "to_dict") else p
+        for p in sorted(panels, key=lambda x: (x.title.lower(), x.url_path))
+    ]
+    write_stable_json(inv_dir / "panels.json", panel_data)
+
+
 def export_references_json(
     output_dir: Path,
     relationships: RelationshipModel,
+    entity_usage_data: dict[str, Any] | None = None,
 ) -> None:
     """Export inverted reference maps into references/ subdirectory."""
     ref_dir = output_dir / "references"
@@ -107,7 +121,7 @@ def export_references_json(
     )
     write_stable_json(
         ref_dir / "entity-usage.json",
-        relationships.entity_to_automations,
+        entity_usage_data if entity_usage_data is not None else relationships.entity_to_automations,
     )
     write_stable_json(
         ref_dir / "dashboard-entity-map.json",
@@ -129,3 +143,90 @@ def export_metadata_json(
     write_stable_json(meta_dir / "exporter-version.json", exporter_version)
     write_stable_json(meta_dir / "sanitization-report.json", sanitization_report)
     write_stable_json(meta_dir / "warnings.json", sorted(warnings))
+
+
+def build_entity_usage_map(
+    automation_models: list[Any] | None = None,
+    scripts_detailed: list[dict[str, Any]] | None = None,
+    dashboards: list[Any] | None = None,
+    entities: list[EntityModel] | None = None,
+) -> dict[str, Any]:
+    """Build reverse usage mapping for entities across automations, scripts, and dashboards."""
+    usage_data: dict[str, dict[str, list[Any]]] = {}
+
+    if entities:
+        for e in entities:
+            usage_data[e.entity_id] = {"automations": [], "dashboards": [], "scripts": []}
+
+    if automation_models:
+        for m in automation_models:
+            m_id = getattr(m, "id", "")
+            m_alias = getattr(m, "alias", "")
+            m_ents = getattr(m, "entities", [])
+            for eid in m_ents:
+                if eid not in usage_data:
+                    usage_data[eid] = {"automations": [], "dashboards": [], "scripts": []}
+                ctx: list[str] = []
+                if hasattr(m, "entity_usage_map") and eid in m.entity_usage_map:
+                    ctx = sorted(m.entity_usage_map[eid])
+                else:
+                    ctx = ["automation_reference"]
+                usage_data[eid]["automations"].append(
+                    {
+                        "id": m_id,
+                        "alias": m_alias,
+                        "usage": ctx,
+                    }
+                )
+
+    if scripts_detailed:
+        for sc in scripts_detailed:
+            sc_id = sc.get("id") or sc.get("alias")
+            for ref in sc.get("references", []):
+                if ref not in usage_data:
+                    usage_data[ref] = {"automations": [], "dashboards": [], "scripts": []}
+                usage_data[ref]["scripts"].append(
+                    {
+                        "id": sc_id,
+                        "alias": sc.get("alias"),
+                        "usage": ["action"],
+                    }
+                )
+
+    if dashboards:
+
+        def _walk_card(c: Any, d: Any, v_title: str) -> None:
+            for ref in getattr(c, "entities", []):
+                if ref not in usage_data:
+                    usage_data[ref] = {"automations": [], "dashboards": [], "scripts": []}
+                d_entries = usage_data[ref]["dashboards"]
+                existing = next((item for item in d_entries if item["id"] == d.id), None)
+                if existing:
+                    if v_title not in existing["views"]:
+                        existing["views"].append(v_title)
+                else:
+                    d_entries.append(
+                        {
+                            "id": d.id,
+                            "title": d.title,
+                            "views": [v_title],
+                            "card_type": getattr(c, "type", "unknown"),
+                        }
+                    )
+            for nc in getattr(c, "nested_cards", []):
+                _walk_card(nc, d, v_title)
+
+        for d in dashboards:
+            for v in d.views:
+                v_title = v.title
+                for card in v.cards:
+                    _walk_card(card, d, v_title)
+
+    sorted_result: dict[str, Any] = {}
+    for eid, data in sorted(usage_data.items()):
+        sorted_result[eid] = {
+            "automations": sorted(data["automations"], key=lambda x: str(x["id"])),
+            "dashboards": sorted(data["dashboards"], key=lambda x: str(x["id"])),
+            "scripts": sorted(data["scripts"], key=lambda x: str(x["id"])),
+        }
+    return sorted_result

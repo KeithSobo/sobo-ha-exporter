@@ -66,3 +66,54 @@ def test_relationship_model_to_dict():
     rel.device_to_entities["dev1"] = ["sensor.b", "sensor.a"]
     d = rel.to_dict()
     assert d["device_to_entities"]["dev1"] == ["sensor.a", "sensor.b"]
+
+
+def test_automation_model_to_dict():
+    from app.models.automation import AutomationModel
+
+    auto = AutomationModel(
+        id="auto_test",
+        alias="Test Automation",
+        entity_usage_map={"light.kitchen": {"action", "trigger"}},
+    )
+    d = auto.to_dict()
+    assert d["id"] == "auto_test"
+    assert d["alias"] == "Test Automation"
+    assert d["entity_usage_map"]["light.kitchen"] == ["action", "trigger"]
+
+
+def test_dashboard_model_to_dict():
+    from app.models.dashboard import CardModel, DashboardModel, PanelModel, ViewModel
+
+    panel = PanelModel(
+        title="Home",
+        url_path="lovelace",
+        component_name="lovelace",
+        panel_type="lovelace_storage",
+    )
+    assert panel.to_dict()["url_path"] == "lovelace"
+
+    dash = DashboardModel(
+        id="dash1",
+        title="Main",
+        url_path=None,
+        icon=None,
+        mode="storage",
+        warnings=["Template warning"],
+        views=[
+            ViewModel(
+                title="View 1",
+                cards=[
+                    CardModel(
+                        type="vertical-stack",
+                        nested_cards=[CardModel(type="button", entities=["light.kitchen"])],
+                    )
+                ],
+            )
+        ],
+    )
+    dd = dash.to_dict()
+    assert dd["stats"]["view_count"] == 1
+    assert dd["stats"]["card_count"] == 2
+    assert dd["stats"]["entity_count"] == 1
+    assert dd["stats"]["unresolved_template_count"] == 1

@@ -225,12 +225,33 @@ def export_ai_reference_layer(
     warnings: list[str],
     dashboards: list[DashboardModel] | None = None,
     dash_discovery_error: str | None = None,
+    automation_models: list[Any] | None = None,
+    panels: list[Any] | None = None,
 ) -> None:
     """Export complete AI reference layer into `ai/` subdirectory."""
     ai_dir = output_dir / "ai"
     ai_dir.mkdir(parents=True, exist_ok=True)
 
-    detailed_autos = parse_automations_detailed(config_dir) if export_config.automations else []
+    if automation_models is not None:
+        auto_models = automation_models
+    else:
+        from app.collectors.automations import collect_automation_models
+
+        auto_models, _ = (
+            collect_automation_models(config_dir) if export_config.automations else ([], [])
+        )
+
+    detailed_autos = [
+        {
+            "id": a.id,
+            "alias": a.alias,
+            "all_references": a.entities,
+            "services": a.called_services,
+            "helpers": a.helpers,
+            "has_dynamic_template": len(a.unresolved_templates) > 0,
+        }
+        for a in auto_models
+    ]
     detailed_scripts = parse_scripts_detailed(config_dir)
 
     ent_map = {e.entity_id: e for e in entities}
@@ -441,60 +462,102 @@ def export_ai_reference_layer(
             f"- **Appears Unused**: {'Yes' if is_unused else 'No'}\n"
         )
     write_text(ai_dir / "helpers.md", "\n".join(helper_lines))
-
-    # 7. ai/automations.md
     auto_lines = ["# Automations Summary\n"]
     if not export_config.automations:
         auto_lines.append("_Automation export is disabled in config.yaml._\n")
-    elif not detailed_autos:
-        auto_lines.append("_No automations found in automations.yaml._\n")
+    elif not auto_models:
+        auto_lines.append("_No automations found in automations configuration._\n")
     else:
-        for auto in detailed_autos:
+        auto_lines.append(f"Total Automations Discovered: {len(auto_models)}\n")
+        for auto in auto_models:
             auto_devs = sorted(
                 {
                     ent_map[ref].device_id
-                    for ref in auto["all_references"]
+                    for ref in auto.entities
                     if ref in ent_map and ent_map[ref].device_id
                 }
             )
             auto_areas = sorted(
                 {
                     ent_map[ref].area_name
-                    for ref in auto["all_references"]
+                    for ref in auto.entities
                     if ref in ent_map and ent_map[ref].area_name
                 }
             )
 
+            tr_str = ", ".join(auto.triggers) if auto.triggers else "None"
+            co_str = ", ".join(auto.conditions) if auto.conditions else "None"
+            ac_str = ", ".join(auto.actions) if auto.actions else "None"
+            srv_str = ", ".join(auto.called_services) if auto.called_services else "None"
+            ent_str = ", ".join(auto.entities) if auto.entities else "None"
+            hlp_str = ", ".join(auto.helpers) if auto.helpers else "None"
+            dev_str = ", ".join(auto_devs) if auto_devs else "None"
+            area_str = ", ".join(auto_areas) if auto_areas else "None"
+            tmpl_str = ", ".join(auto.unresolved_templates) if auto.unresolved_templates else "None"
+            warn_str = ", ".join(auto.warnings) if auto.warnings else "None"
+
             auto_lines.append(
-                f"## {auto['alias']} (`{auto['id']}`)\n"
-                f"- **Triggers**: {', '.join(auto['triggers']) if auto['triggers'] else 'None'}\n"
-                f"- **Conditions**: "
-                f"{', '.join(auto['conditions']) if auto['conditions'] else 'None'}\n"
-                f"- **Actions**: {', '.join(auto['actions']) if auto['actions'] else 'None'}\n"
-                f"- **Services Called**: "
-                f"{', '.join(auto['services']) if auto['services'] else 'None'}\n"
-                f"- **Helpers Referenced**: "
-                f"{', '.join(auto['helpers']) if auto['helpers'] else 'None'}\n"
-                f"- **Areas Touched**: {', '.join(auto_areas) if auto_areas else 'None'}\n"
-                f"- **Devices Touched**: {', '.join(auto_devs) if auto_devs else 'None'}\n"
-                f"- **Dynamic Templates Present**: "
-                f"{'Yes' if auto['has_dynamic_template'] else 'No'}\n"
+                f"## {auto.alias} (`{auto.id}`)\n"
+                f"- **Source File**: `{auto.source_file}`\n"
+                f"- **Triggers**: {tr_str}\n"
+                f"- **Conditions**: {co_str}\n"
+                f"- **Actions**: {ac_str}\n"
+                f"- **Services Called**: {srv_str}\n"
+                f"- **Entities Referenced**: {ent_str}\n"
+                f"- **Helpers Referenced**: {hlp_str}\n"
+                f"- **Areas Touched**: {area_str}\n"
+                f"- **Devices Touched**: {dev_str}\n"
+                f"- **Unresolved Templates**: {tmpl_str}\n"
+                f"- **Warnings**: {warn_str}\n"
             )
 
-        auto_lines.append("## Reverse Summaries\n")
-        ent_ref_counts = sorted(
-            [(eid, len(autos)) for eid, autos in auto_ref_map.items()],
-            key=lambda x: (-x[1], x[0]),
+        auto_lines.append("## Rollup Summaries\n")
+        auto_lines.append(f"- **Total Automation Count**: {len(auto_models)}")
+        no_ref = [a.alias for a in auto_models if not a.entities]
+        auto_lines.append(
+            f"- **Automations with No Entity References ({len(no_ref)})**: "
+            f"{', '.join(no_ref) if no_ref else 'None'}"
         )
-        auto_lines.append("### Most Referenced Entities in Automations")
-        for eid, cnt in ent_ref_counts[:10]:
+        unres_t = [a.alias for a in auto_models if a.unresolved_templates]
+        auto_lines.append(
+            f"- **Automations with Unresolved Templates ({len(unres_t)})**: "
+            f"{', '.join(unres_t) if unres_t else 'None'}"
+        )
+
+        auto_lines.append("\n### Most Referenced Entities in Automations")
+        ref_counts: dict[str, int] = {}
+        for a in auto_models:
+            for e in a.entities:
+                ref_counts[e] = ref_counts.get(e, 0) + 1
+        for eid, cnt in sorted(ref_counts.items(), key=lambda x: (-x[1], x[0]))[:10]:
             auto_lines.append(f"- `{eid}`: referenced by {cnt} automation(s)")
 
-        no_ref_autos = [a["alias"] for a in detailed_autos if not a["all_references"]]
-        auto_lines.append("\n### Automations with No Detectable Entity References")
-        if no_ref_autos:
-            for a in no_ref_autos:
-                auto_lines.append(f"- {a}")
+        auto_lines.append("\n### Most Used Services in Automations")
+        srv_counts: dict[str, int] = {}
+        for a in auto_models:
+            for s in a.called_services:
+                srv_counts[s] = srv_counts.get(s, 0) + 1
+        for srv, cnt in sorted(srv_counts.items(), key=lambda x: (-x[1], x[0]))[:10]:
+            auto_lines.append(f"- `{srv}`: called by {cnt} automation(s)")
+
+        auto_lines.append("\n### Helper Usage Summary")
+        all_helpers = sorted({h for a in auto_models for h in a.helpers})
+        if all_helpers:
+            for h in all_helpers:
+                auto_lines.append(f"- `{h}`")
+        else:
+            auto_lines.append("- _None_")
+
+        auto_lines.append("\n### Missing Entity References")
+        all_known_ents = {e.entity_id for e in entities}
+        missing_refs = sorted(
+            {e for a in auto_models for e in a.entities if e not in all_known_ents}
+        )
+        if missing_refs:
+            for m_ref in missing_refs:
+                auto_lines.append(
+                    f"- ⚠️ `{m_ref}` (referenced in automation, not registered in Home Assistant)"
+                )
         else:
             auto_lines.append("- _None_")
 
@@ -575,9 +638,9 @@ def export_ai_reference_layer(
 
         l_autos = sorted(
             {
-                auto["alias"]
-                for auto in detailed_autos
-                if any(ref in [e.entity_id for e in l_ents] for ref in auto["all_references"])
+                auto.alias
+                for auto in auto_models
+                if any(ref in [e.entity_id for e in l_ents] for ref in auto.entities)
             }
         )
         l_scripts = sorted(
@@ -604,9 +667,9 @@ def export_ai_reference_layer(
     dash_dir.mkdir(parents=True, exist_ok=True)
 
     dash_list = dashboards or []
+    panel_list = panels or []
     overview_lines = [
-        "# Lovelace Dashboards Overview\n",
-        f"Total Dashboards Discovered: {len(dash_list)}\n",
+        "# Home Assistant Dashboards & Panels Overview\n",
     ]
 
     if dash_discovery_error:
@@ -618,111 +681,201 @@ def export_ai_reference_layer(
         overview_lines.append(
             "_Dashboard analysis was disabled in configuration (`export.dashboards: false`)._\n"
         )
-    elif not dash_list:
-        if not dash_discovery_error:
-            overview_lines.append(
-                "_No Lovelace dashboards were discovered on this Home Assistant installation._\n"
-            )
     else:
-        overview_lines.append(
-            "| Dashboard Title | Mode | Default | Views | Cards | Custom Cards | Pillar Cards |\n"
-            "| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n"
-        )
-        for dash in sorted(dash_list, key=lambda x: (x.title.lower(), x.id)):
-            d_dict = dash.to_dict()
-            st = d_dict["stats"]
-            def_str = "Yes" if dash.default_dashboard else "No"
-            slug_name = (dash.title or dash.id).strip().replace(" ", "_").replace("/", "_")
+        # Section 1: Analyzed Lovelace Dashboards
+        overview_lines.append("## 1. Analyzed Lovelace Dashboards\n")
+        if dash_list:
             overview_lines.append(
-                f"| [{dash.title}]({slug_name}.md) | `{dash.mode}` | {def_str} | "
-                f"{st['view_count']} | {st['card_count']} | {st['custom_card_count']} | "
-                f"{st['pillar_component_count']} |"
+                "| Dashboard Title | Mode | Default | Views |"
+                " Cards | Custom Cards | Pillar Cards |\n"
+                "| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n"
             )
+            for dash in sorted(dash_list, key=lambda x: (x.title.lower(), x.id)):
+                st = dash.to_dict()["stats"]
+                def_str = "Yes" if dash.default_dashboard else "No"
+                slug_name = (dash.title or dash.id).strip().replace(" ", "_").replace("/", "_")
+                overview_lines.append(
+                    f"| [{dash.title}]({slug_name}.md) | `{dash.mode}` | {def_str} | "
+                    f"{st['view_count']} | {st['card_count']} | {st['custom_card_count']} | "
+                    f"{st['pillar_component_count']} |"
+                )
 
-            # Generate individual per-dashboard Markdown file (e.g. Home.md)
-            d_lines = [
-                f"# Dashboard: {dash.title}\n",
-                f"- **ID**: `{dash.id}`",
-                f"- **URL Path**: `{dash.url_path or 'default'}`",
-                f"- **Mode**: `{dash.mode}` (Source: `{dash.source}`)",
-                f"- **Default Dashboard**: {'Yes' if dash.default_dashboard else 'No'}",
-                f"- **Admin Only**: {'Yes' if dash.require_admin else 'No'}\n",
-                "## Summary Metrics\n",
-                f"- **Views**: {st['view_count']}",
-                f"- **Total Cards**: {st['card_count']}",
-                f"- **Custom Cards Used**: {st['custom_card_count']}",
-                f"- **Pillar Components**: {st['pillar_component_count']}",
-                f"- **Referenced Entities**: {st['entity_count']}\n",
+                # Individual dashboard file
+                d_lines = [
+                    f"# Dashboard: {dash.title}\n",
+                    f"- **ID**: `{dash.id}`",
+                    f"- **URL Path**: `{dash.url_path or 'default'}`",
+                    f"- **Mode**: `{dash.mode}` (Source: `{dash.source}`)",
+                    f"- **Default Dashboard**: {'Yes' if dash.default_dashboard else 'No'}",
+                    f"- **Admin Only**: {'Yes' if dash.require_admin else 'No'}\n",
+                    "## Summary Metrics\n",
+                    f"- **Views**: {st['view_count']}",
+                    f"- **Total Cards**: {st['card_count']}",
+                    f"- **Custom Cards Used**: {st['custom_card_count']}",
+                    f"- **Pillar Components**: {st['pillar_component_count']}",
+                    f"- **Referenced Entities**: {st['entity_count']}\n",
+                ]
+
+                if dash.custom_cards:
+                    d_lines.append("## Custom Cards Used\n")
+                    for cc in dash.custom_cards:
+                        d_lines.append(f"- `{cc}`")
+                    d_lines.append("")
+
+                if dash.pillar_components:
+                    d_lines.append("## Pillar Components\n")
+                    for pc in dash.pillar_components:
+                        p_title = pc.get("title") or pc.get("card_type")
+                        d_lines.append(f"### {p_title}")
+                        d_lines.append(f"- **Card Type**: `{pc.get('card_type')}`")
+                        if pc.get("navigation_path"):
+                            d_lines.append(f"- **Navigation Path**: `{pc['navigation_path']}`")
+                        p_ents = pc.get("entities") or []
+                        if p_ents:
+                            d_lines.append(
+                                f"- **Referenced Entities ({len(p_ents)})**: "
+                                f"{', '.join([f'`{e}`' for e in p_ents])}"
+                            )
+                        d_lines.append("")
+
+                if dash.views:
+                    d_lines.append("## Views & Layout\n")
+                    for idx, v in enumerate(dash.views, 1):
+                        v_icon = f" ({v.icon})" if v.icon else ""
+                        d_lines.append(f"### View {idx}: {v.title}{v_icon}\n")
+                        if v.path:
+                            d_lines.append(f"- **Path**: `{v.path}`")
+                        d_lines.append(f"- **Cards in View**: {len(v.cards)}")
+                        if v.sections:
+                            d_lines.append(f"- **Sections in View**: {len(v.sections)}")
+                        d_lines.append("")
+
+                        def _format_cards(
+                            cards: list, target_lines: list[str], indent_level: int = 0
+                        ) -> None:
+                            prefix = "  " * indent_level
+                            for card in cards:
+                                c_t = card.title or card.type
+                                target_lines.append(f"{prefix}- **{c_t}** (`{card.type}`)")
+                                if card.entities:
+                                    target_lines.append(
+                                        f"{prefix}  - Entities: "
+                                        f"{', '.join([f'`{e}`' for e in card.entities])}"
+                                    )
+                                if card.navigation_path:
+                                    target_lines.append(
+                                        f"{prefix}  - Navigation: `{card.navigation_path}`"
+                                    )
+                                if card.services:
+                                    target_lines.append(
+                                        f"{prefix}  - Services Called: "
+                                        f"{', '.join([f'`{s}`' for s in card.services])}"
+                                    )
+                                if card.nested_cards:
+                                    _format_cards(card.nested_cards, target_lines, indent_level + 1)
+
+                        _format_cards(v.cards, d_lines)
+                        d_lines.append("")
+
+                if dash.warnings:
+                    d_lines.append("## Warnings & Unresolved Templates\n")
+                    for w in dash.warnings:
+                        d_lines.append(f"- ⚠️ {w}")
+                    d_lines.append("")
+
+                write_text(dash_dir / f"{slug_name}.md", "\n".join(d_lines))
+        else:
+            overview_lines.append("_No standard Lovelace dashboards analyzed._\n")
+
+        # Section 2: Strategy Dashboards
+        strat_panels = [
+            p for p in panel_list if getattr(p, "panel_type", "") == "lovelace_strategy"
+        ]
+        overview_lines.append("\n## 2. Strategy Dashboards\n")
+        if strat_panels:
+            overview_lines.append(
+                "| Title | URL Path | Config Expandable | Details |\n"
+                "| :--- | :--- | :--- | :--- |\n"
+            )
+            for p in strat_panels:
+                exp_str = "Yes" if getattr(p, "lovelace_config_available", False) else "No"
+                r_str = getattr(p, "warning_or_reason", None) or "Strategy-based generation"
+                overview_lines.append(f"| {p.title} | `{p.url_path}` | {exp_str} | {r_str} |\n")
+        else:
+            overview_lines.append("_No strategy dashboards discovered._\n")
+
+        # Section 3: Built-in Home Assistant Panels
+        builtin_panels = [p for p in panel_list if getattr(p, "panel_type", "") == "builtin_panel"]
+        overview_lines.append("\n## 3. Built-in Home Assistant Panels\n")
+        if builtin_panels:
+            overview_lines.append(
+                "| Title | URL Path | Component | Admin Required | Details |\n"
+                "| :--- | :--- | :--- | :--- | :--- |\n"
+            )
+            for p in builtin_panels:
+                adm_str = "Yes" if getattr(p, "require_admin", False) else "No"
+                r_str = (
+                    getattr(p, "warning_or_reason", None)
+                    or "Built-in panel, no Lovelace config expected"
+                )
+                overview_lines.append(
+                    f"| {p.title} | `{p.url_path}` | `{p.component_name}` | {adm_str} | {r_str} |\n"
+                )
+        else:
+            overview_lines.append("_No built-in panels discovered._\n")
+
+        # Section 4: Integration-Provided Panels
+        integ_panels = [
+            p
+            for p in panel_list
+            if getattr(p, "panel_type", "")
+            in [
+                "integration_panel",
+                "redirect_panel",
+                "unknown_panel",
             ]
+        ]
+        overview_lines.append("\n## 4. Integration-Provided Panels\n")
+        if integ_panels:
+            overview_lines.append(
+                "| Title | URL Path | Component | Admin Required | Details |\n"
+                "| :--- | :--- | :--- | :--- | :--- |\n"
+            )
+            for p in integ_panels:
+                adm_str = "Yes" if getattr(p, "require_admin", False) else "No"
+                r_str = getattr(p, "warning_or_reason", None) or "Integration panel"
+                overview_lines.append(
+                    f"| {p.title} | `{p.url_path}` | `{p.component_name}` | {adm_str} | {r_str} |\n"
+                )
+        else:
+            overview_lines.append("_No integration-provided panels discovered._\n")
 
-            if dash.custom_cards:
-                d_lines.append("## Custom Cards Used\n")
-                for cc in dash.custom_cards:
-                    d_lines.append(f"- `{cc}`")
-                d_lines.append("")
-
-            if dash.pillar_components:
-                d_lines.append("## Pillar Components\n")
-                for pc in dash.pillar_components:
-                    p_title = pc.get("title") or pc.get("card_type")
-                    d_lines.append(f"### {p_title}")
-                    d_lines.append(f"- **Card Type**: `{pc.get('card_type')}`")
-                    if pc.get("navigation_path"):
-                        d_lines.append(f"- **Navigation Path**: `{pc['navigation_path']}`")
-                    p_ents = pc.get("entities") or []
-                    if p_ents:
-                        d_lines.append(
-                            f"- **Referenced Entities ({len(p_ents)})**: "
-                            f"{', '.join([f'`{e}`' for e in p_ents])}"
-                        )
-                    d_lines.append("")
-
-            if dash.views:
-                d_lines.append("## Views & Layout\n")
-                for idx, v in enumerate(dash.views, 1):
-                    v_icon = f" ({v.icon})" if v.icon else ""
-                    d_lines.append(f"### View {idx}: {v.title}{v_icon}\n")
-                    if v.path:
-                        d_lines.append(f"- **Path**: `{v.path}`")
-                    d_lines.append(f"- **Cards in View**: {len(v.cards)}")
-                    if v.sections:
-                        d_lines.append(f"- **Sections in View**: {len(v.sections)}")
-                    d_lines.append("")
-
-                    def _format_cards(
-                        cards: list, target_lines: list[str], indent_level: int = 0
-                    ) -> None:
-                        prefix = "  " * indent_level
-                        for card in cards:
-                            c_t = card.title or card.type
-                            target_lines.append(f"{prefix}- **{c_t}** (`{card.type}`)")
-                            if card.entities:
-                                target_lines.append(
-                                    f"{prefix}  - Entities: "
-                                    f"{', '.join([f'`{e}`' for e in card.entities])}"
-                                )
-                            if card.navigation_path:
-                                target_lines.append(
-                                    f"{prefix}  - Navigation: `{card.navigation_path}`"
-                                )
-                            if card.services:
-                                target_lines.append(
-                                    f"{prefix}  - Services Called: "
-                                    f"{', '.join([f'`{s}`' for s in card.services])}"
-                                )
-                            if card.nested_cards:
-                                _format_cards(card.nested_cards, target_lines, indent_level + 1)
-
-                    _format_cards(v.cards, d_lines)
-                    d_lines.append("")
-
-            if dash.warnings:
-                d_lines.append("## Warnings & Unresolved Templates\n")
-                for w in dash.warnings:
-                    d_lines.append(f"- ⚠️ {w}")
-                d_lines.append("")
-
-            write_text(dash_dir / f"{slug_name}.md", "\n".join(d_lines))
+        # Section 5: Unavailable or Failed Dashboard Configurations
+        unavail_panels = [
+            p
+            for p in panel_list
+            if not getattr(p, "lovelace_config_available", False)
+            and getattr(p, "panel_type", "")
+            in [
+                "lovelace_storage",
+                "lovelace_yaml",
+                "lovelace_strategy",
+            ]
+        ]
+        overview_lines.append("\n## 5. Unavailable or Failed Dashboard Configurations\n")
+        if unavail_panels:
+            overview_lines.append(
+                "| Title | URL Path | Type | Reason / Failure |\n| :--- | :--- | :--- | :--- |\n"
+            )
+            for p in unavail_panels:
+                overview_lines.append(
+                    f"| {p.title} | `{p.url_path}` | `{p.panel_type}` | "
+                    f"{getattr(p, 'warning_or_reason', None) or 'Configuration unresolvable'} |\n"
+                )
+        else:
+            overview_lines.append(
+                "_All expected Lovelace dashboards were successfully resolved._\n"
+            )
 
     write_text(dash_dir / "overview.md", "\n".join(overview_lines))
 

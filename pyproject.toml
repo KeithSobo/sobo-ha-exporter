@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sobo-ha-exporter"
-version = "0.3.2"
+version = "0.3.3"
 description = "Home Assistant OS add-on to export a sanitized reference model of your HA setup to GitHub"
 readme = "README.md"
 requires-python = ">=3.11"

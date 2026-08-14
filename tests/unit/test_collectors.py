@@ -44,6 +44,27 @@ def test_collect_labels_optional_fallback():
         collect_labels(mock_client, required=True)
 
 
+def test_collect_configuration_files_edge_cases(tmp_path):
+    # Non-existent directory
+    missing_path = tmp_path / "does_not_exist"
+    files = collect_configuration_files(missing_path)
+    assert files == {}
+
+    # Allow custom components and www
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "www").mkdir()
+    (config_dir / "www" / "card.yaml").write_text("type: custom\n")
+    (config_dir / "custom_components" / "test").mkdir(parents=True)
+    (config_dir / "custom_components" / "test" / "sensor.yaml").write_text("platform: test\n")
+
+    files_www = collect_configuration_files(
+        config_dir, allow_custom_components=True, allow_www=True
+    )
+    assert "www/card.yaml" in files_www
+    assert "custom_components/test/sensor.yaml" in files_www
+
+
 def test_entity_area_resolution_hierarchy_and_rich_metadata():
     mock_client = MagicMock()
     mock_client.get_states.return_value = [
