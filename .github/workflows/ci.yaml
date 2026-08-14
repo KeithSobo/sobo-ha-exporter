@@ -1,6 +1,6 @@
 name: CI
 
-on:
+"on":
   push:
     branches: [main]
   pull_request:
@@ -61,7 +61,7 @@ jobs:
 
       - name: Run Unit Tests & Verify Coverage Threshold (>= 80%)
         run: |
-          pytest --cov=sobo_ha_exporter.app --cov-report=term-missing --cov-fail-under=80
+          pytest --cov=app --cov-report=term-missing --cov-fail-under=80
 
       - name: Run Integration Tests
         run: pytest tests/integration

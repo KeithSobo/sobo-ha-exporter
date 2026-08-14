@@ -1,7 +1,9 @@
 configuration:
   repository:
     name: "Destination Repository URL"
-    description: "Private GitHub SSH repository URL (e.g., git@github.com:username/ha-reference.git)"
+    description: >-
+      Private GitHub SSH repository URL (e.g.,
+      git@github.com:username/ha-reference.git)
   branch:
     name: "Git Branch"
     description: "Target branch in destination repository"
