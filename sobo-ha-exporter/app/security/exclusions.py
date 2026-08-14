@@ -32,7 +32,33 @@ EXCLUDED_PATTERNS = [
     "*.key",
     "*.crt",
     "*.pem",
+    "strings.json",
+    "*/strings.json",
+    "translations",
+    "translations/*",
+    "*/translations/*",
+    "node_modules",
+    "node_modules/*",
+    "*/node_modules/*",
+    "__pycache__",
+    "__pycache__/*",
+    "*/__pycache__/*",
+    ".pytest_cache",
+    ".pytest_cache/*",
+    "*/.pytest_cache/*",
 ]
+
+EXCLUDED_DIR_NAMES = {
+    ".storage",
+    ".cloud",
+    ".auth",
+    "backups",
+    "translations",
+    "node_modules",
+    "__pycache__",
+    ".pytest_cache",
+    ".git",
+}
 
 
 def is_excluded_file(file_path: Path | str) -> bool:
@@ -46,14 +72,13 @@ def is_excluded_file(file_path: Path | str) -> bool:
     """
     path_str = str(file_path).replace("\\", "/")
     parts = path_str.split("/")
+    name = parts[-1].lower()
 
-    # Check filename and directory segments
-    name = parts[-1]
-    if name in ["secrets.yaml", ".storage", ".cloud", ".auth", "backups"]:
+    if name in ["secrets.yaml", "strings.json"]:
         return True
 
     for segment in parts:
-        if segment in [".storage", ".cloud", ".auth", "backups"]:
+        if segment.lower() in EXCLUDED_DIR_NAMES:
             return True
 
     for pattern in EXCLUDED_PATTERNS:

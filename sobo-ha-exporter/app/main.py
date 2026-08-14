@@ -27,10 +27,13 @@ from app.config import AppConfig, ConfigurationError, get_config_dir, load_confi
 from app.exporters import (
     export_ai_reference_layer,
     export_config_yaml,
+    export_summaries_markdown,
+)
+from app.exporters.json_exporter import (
     export_inventory_json,
     export_metadata_json,
     export_references_json,
-    export_summaries_markdown,
+    write_stable_json,
 )
 from app.github.deploy_key import DeployKeyError, ensure_deploy_key, log_deploy_key_banner
 from app.github.git_client import GitClient, GitClientError
@@ -389,11 +392,53 @@ def _execute_export_pipeline(
             warnings=warnings,
         )
 
+        # Safe diagnostic logging of staged export files before secret scanner
+        staged_files = [f for f in staging_dir.rglob("*") if f.is_file()]
+        total_count = len(staged_files)
+        total_bytes = sum(f.stat().st_size for f in staged_files)
+
+        grouped_dirs: dict[str, list[tuple[str, int]]] = {}
+        for f in staged_files:
+            rel = f.relative_to(staging_dir)
+            top_dir = rel.parts[0] if len(rel.parts) > 1 else "root"
+            grouped_dirs.setdefault(top_dir, []).append(
+                (str(rel).replace("\\", "/"), f.stat().st_size)
+            )
+
+        logger.info(
+            "Staged export summary: %d total files, %d total bytes",
+            total_count,
+            total_bytes,
+        )
+        for top_dir in sorted(grouped_dirs.keys()):
+            group_files = grouped_dirs[top_dir]
+            group_count = len(group_files)
+            group_size = sum(sz for _, sz in group_files)
+            logger.info("  [%s/]: %d files (%d bytes)", top_dir, group_count, group_size)
+            for rel_str, sz in sorted(group_files):
+                logger.debug("    staged file: %s (%d bytes)", rel_str, sz)
+
         # 5. Secret Scanner Gate on temporary staging directory
         scanner = SecretScanner()
         scan_res = scanner.scan_directory(staging_dir)
         if scan_res.has_secrets:
-            msg = f"Secret Scanner aborted export due to findings: {scan_res.findings}"
+            manifest_findings = [
+                {
+                    "relative_path": d.relative_path,
+                    "extension": d.extension,
+                    "size_bytes": d.size_bytes,
+                    "rule_name": d.rule_name,
+                    "line_number": d.line_number,
+                }
+                for d in scan_res.detailed_findings
+            ]
+            manifest_path = status_dir / "failed-export-manifest.json"
+            write_stable_json(manifest_path, {"findings": manifest_findings})
+
+            msg = (
+                f"Secret Scanner aborted export due to findings. "
+                f"Safe diagnostic manifest written to {manifest_path}"
+            )
             logger.error(msg)
             update_status(
                 status_dir,
@@ -403,6 +448,8 @@ def _execute_export_pipeline(
                 warnings_count=warnings_count,
                 error_message=msg,
             )
+            # Immediately remove temporary staging directory containing sensitive data
+            shutil.rmtree(staging_dir, ignore_errors=True)
             return False
 
         # 6. Clean replacement of generated staging directory

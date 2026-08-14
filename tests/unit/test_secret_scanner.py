@@ -37,3 +37,40 @@ def test_secret_scanner_ignores_redacted_placeholders(tmp_path):
     scanner = SecretScanner()
     res = scanner.scan_directory(tmp_path)
     assert res.has_secrets is False
+
+
+def test_secret_scanner_ignores_ui_translation_labels(tmp_path):
+    trans_file = tmp_path / "en.json"
+    trans_file.write_text(
+        '{"password": "Password", "api_key": "API Key", "secret": "Client Secret"}',
+        encoding="utf-8",
+    )
+    scanner = SecretScanner()
+    res = scanner.scan_directory(tmp_path)
+    assert res.has_secrets is False
+
+
+def test_secret_scanner_detects_real_hardcoded_password(tmp_path):
+    user_yaml = tmp_path / "configuration.yaml"
+    user_yaml.write_text('mqtt:\n  password: "MySecretPass123!"\n', encoding="utf-8")
+    scanner = SecretScanner()
+    res = scanner.scan_directory(tmp_path)
+    assert res.has_secrets is True
+    assert any("Hardcoded Password Field" in f for f in res.findings)
+
+
+def test_secret_scanner_no_secret_values_in_detailed_findings(tmp_path):
+    user_yaml = tmp_path / "configuration.yaml"
+    secret_val = "SuperSecret_Value_998877"
+    user_yaml.write_text(f'mqtt:\n  password: "{secret_val}"\n', encoding="utf-8")
+    scanner = SecretScanner()
+    res = scanner.scan_directory(tmp_path)
+    assert res.has_secrets is True
+    assert len(res.detailed_findings) > 0
+    detail = res.detailed_findings[0]
+    assert detail.rule_name == "Hardcoded Password Field"
+    assert detail.relative_path == "configuration.yaml"
+    # Ensure secret_val does not appear in detail fields
+    assert secret_val not in detail.relative_path
+    assert secret_val not in detail.rule_name
+    assert secret_val not in detail.extension

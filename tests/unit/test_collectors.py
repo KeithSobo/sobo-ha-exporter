@@ -223,3 +223,46 @@ def test_device_entities_population_sorted_and_deduplicated():
     assert len(devices) == 1
     d = devices[0]
     assert d.entities == ["sensor.temp_a", "sensor.temp_z"]
+
+
+def test_configuration_collector_excludes_translations_and_strings_json(tmp_path):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+
+    (config_dir / "configuration.yaml").write_text(
+        "homeassistant:\n  name: Home\n", encoding="utf-8"
+    )
+    (config_dir / "strings.json").write_text('{"title": "Test"}', encoding="utf-8")
+
+    trans_dir = config_dir / "translations"
+    trans_dir.mkdir()
+    (trans_dir / "en.json").write_text('{"password": "Password"}', encoding="utf-8")
+    (trans_dir / "water.yaml").write_text("name: Water", encoding="utf-8")
+
+    cfg_files = collect_configuration_files(config_dir)
+    assert "configuration.yaml" in cfg_files
+    assert "strings.json" not in cfg_files
+    assert "translations/en.json" not in cfg_files
+    assert "translations/water.yaml" not in cfg_files
+
+
+def test_configuration_collector_excludes_custom_components_unless_enabled(tmp_path):
+    config_dir = tmp_path / "config"
+    cc_dir = config_dir / "custom_components" / "my_integration"
+    cc_dir.mkdir(parents=True)
+
+    (config_dir / "configuration.yaml").write_text(
+        "homeassistant:\n  name: Home\n", encoding="utf-8"
+    )
+    (cc_dir / "sensor.py").write_text("# code", encoding="utf-8")
+    (cc_dir / "config.yaml").write_text("name: Custom", encoding="utf-8")
+
+    # Disabled by default
+    cfg_disabled = collect_configuration_files(config_dir, allow_custom_components=False)
+    assert "configuration.yaml" in cfg_disabled
+    assert "custom_components/my_integration/config.yaml" not in cfg_disabled
+
+    # Enabled
+    cfg_enabled = collect_configuration_files(config_dir, allow_custom_components=True)
+    assert "configuration.yaml" in cfg_enabled
+    assert "custom_components/my_integration/config.yaml" in cfg_enabled

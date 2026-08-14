@@ -109,3 +109,67 @@ def test_deploy_key_failure_exits_main(tmp_path):
         assert status_file.exists()
         data = json.loads(status_file.read_text(encoding="utf-8"))
         assert data["status"] == "error"
+
+
+def test_secret_scanner_failure_writes_safe_manifest_and_cleans_staging(tmp_path, monkeypatch):
+    monkeypatch.setenv("SUPERVISOR_TOKEN", "test_token")
+    data_dir = tmp_path / "data"
+    config_dir = tmp_path / "config"
+    data_dir.mkdir()
+    config_dir.mkdir()
+
+    secret_str = "ghp_1234567890abcdefghijklmnopqrstuvwxyz"
+    (config_dir / "configuration.yaml").write_text(f"# leaked {secret_str}\n", encoding="utf-8")
+
+    config = AppConfig(
+        repository="git@github.com:KeithSobo/sobo-ha-exporter.git",
+        branch="main",
+        export=MagicMock(
+            entities=False,
+            devices=False,
+            areas=False,
+            labels=False,
+            integrations=False,
+            relationships=False,
+            automations=False,
+            configuration_files=True,
+            dashboards=False,
+            custom_components=False,
+            www=False,
+        ),
+    )
+
+    mock_ha_client = MagicMock()
+    mock_ha_client.validate_connection.return_value = True
+
+    with (
+        patch("app.main.ensure_deploy_key") as mock_key,
+        patch("app.main.HomeAssistantClient", return_value=mock_ha_client),
+    ):
+        mock_key.return_value = (
+            tmp_path / "priv",
+            tmp_path / "pub",
+            "ssh-ed25519 AAAAKEY",
+        )
+
+        res = run_export(config, data_dir=data_dir, config_dir=config_dir)
+        assert res is False
+
+        # Manifest must exist
+        manifest_file = data_dir / "status" / "failed-export-manifest.json"
+        assert manifest_file.exists()
+
+        manifest_data = json.loads(manifest_file.read_text(encoding="utf-8"))
+        assert "findings" in manifest_data
+        assert len(manifest_data["findings"]) > 0
+
+        finding = manifest_data["findings"][0]
+        assert finding["rule_name"] == "GitHub Personal Access Token"
+
+        # Ensure no secret values appear in manifest
+        raw_manifest_text = manifest_file.read_text(encoding="utf-8")
+        assert secret_str not in raw_manifest_text
+
+        # Ensure staging dir was cleaned up
+        staging_dir = data_dir / "generated_staging"
+        assert not staging_dir.exists()
