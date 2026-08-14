@@ -2,6 +2,12 @@
 
 All notable changes to the Sobo Home Assistant Exporter add-on will be documented in this file.
 
+## [0.3.2] - 2026-08-14
+
+### Fixed
+
+- Resolved line length formatting in `ha_client.py` error message outputs.
+
 ## [0.3.1] - 2026-08-14
 
 ### Added

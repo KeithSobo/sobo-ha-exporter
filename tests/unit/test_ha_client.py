@@ -180,3 +180,10 @@ def test_get_registries_and_lovelace(monkeypatch):
     ):
         cfg = client.get_lovelace_config(None)
         assert cfg == {"title": "Main Home"}
+
+    with patch.object(
+        client,
+        "_websocket_command",
+        return_value="not_a_dict",
+    ):
+        assert client.get_lovelace_config("custom") == {}

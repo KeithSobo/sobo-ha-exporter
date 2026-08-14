@@ -157,8 +157,9 @@ class HomeAssistantClient:
         """
         res = self._websocket_command("config/entity_registry/list")
         if not isinstance(res, list):
+            t_name = type(res).__name__
             raise HomeAssistantClientError(
-                f"WebSocket command 'config/entity_registry/list' expected list, got {type(res).__name__}"
+                f"WebSocket command 'config/entity_registry/list' expected list, got {t_name}"
             )
         return res
 
@@ -170,8 +171,9 @@ class HomeAssistantClient:
         """
         res = self._websocket_command("config/device_registry/list")
         if not isinstance(res, list):
+            t_name = type(res).__name__
             raise HomeAssistantClientError(
-                f"WebSocket command 'config/device_registry/list' expected list, got {type(res).__name__}"
+                f"WebSocket command 'config/device_registry/list' expected list, got {t_name}"
             )
         return res
 
@@ -183,8 +185,9 @@ class HomeAssistantClient:
         """
         res = self._websocket_command("config/area_registry/list")
         if not isinstance(res, list):
+            t_name = type(res).__name__
             raise HomeAssistantClientError(
-                f"WebSocket command 'config/area_registry/list' expected list, got {type(res).__name__}"
+                f"WebSocket command 'config/area_registry/list' expected list, got {t_name}"
             )
         return res
 
@@ -198,8 +201,9 @@ class HomeAssistantClient:
         """
         res = self._websocket_command("config/label_registry/list")
         if not isinstance(res, list):
+            t_name = type(res).__name__
             raise HomeAssistantClientError(
-                f"WebSocket command 'config/label_registry/list' expected list, got {type(res).__name__}"
+                f"WebSocket command 'config/label_registry/list' expected list, got {t_name}"
             )
         return res
 
@@ -211,8 +215,9 @@ class HomeAssistantClient:
         """
         res = self._websocket_command("lovelace/dashboards/list")
         if not isinstance(res, list):
+            t_name = type(res).__name__
             raise HomeAssistantClientError(
-                f"WebSocket command 'lovelace/dashboards/list' expected list, got {type(res).__name__}"
+                f"WebSocket command 'lovelace/dashboards/list' expected list, got {t_name}"
             )
         return res
 
