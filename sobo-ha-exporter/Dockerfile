@@ -4,6 +4,8 @@ FROM ${BUILD_FROM}
 ENV PYTHONUNBUFFERED=1
 
 RUN apk add --no-cache \
+    python3 \
+    py3-pip \
     git \
     openssh-client \
     bash \
@@ -12,7 +14,7 @@ RUN apk add --no-cache \
 WORKDIR /app
 
 COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python3 -m pip install --no-cache-dir -r /app/requirements.txt
 
 COPY app /app/app
 COPY run.sh /app/run.sh
