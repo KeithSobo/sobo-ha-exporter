@@ -1,6 +1,7 @@
 """Data sanitizer for redacting sensitive fields and patterns."""
 
 import re
+from dataclasses import dataclass, field
 from typing import Any
 
 from app.config import SanitizationConfig
@@ -19,6 +20,20 @@ USER_ID_KEYS = {
 }
 
 HEX_32_REGEX = re.compile(r"^[0-9a-fA-F]{32}$")
+
+
+@dataclass
+class SanitizationReport:
+    enabled: bool
+    warnings_count: int = 0
+    categories: dict[str, int] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "total_values_redacted": sum(self.categories.values()),
+            "categories": self.categories,
+        }
 
 
 class DataSanitizer:
@@ -72,9 +87,9 @@ class DataSanitizer:
         if not self.config.enabled:
             return device
         device.name = self.sanitize_string(device.name, "name")
+        device.area_name = self.sanitize_string(device.area_name, "area_name")
         device.manufacturer = self.sanitize_string(device.manufacturer, "manufacturer")
         device.model = self.sanitize_string(device.model, "model")
-        device.area_name = self.sanitize_string(device.area_name, "area_name")
         return device
 
     def sanitize_area(self, area: AreaModel) -> AreaModel:
@@ -93,16 +108,17 @@ class DataSanitizer:
         label.description = self.sanitize_string(label.description, "description")
         return label
 
+    def sanitize_config_files(self, config_files: dict[str, str]) -> dict[str, str]:
+        """Sanitize contents of configuration YAML files dictionary."""
+        if not self.config.enabled:
+            return config_files
+        sanitized = {}
+        for path_str, content in config_files.items():
+            sanitized[path_str] = self.sanitize_string(content, key_name=path_str)
+        return sanitized
+
     def sanitize_value(self, value: Any, key_name: str = "") -> Any:
-        """Recursively sanitize data structure or primitive value.
-
-        Args:
-            value: Any JSON-serializable structure or primitive value.
-            key_name: Key name if processing a dictionary field.
-
-        Returns:
-            Sanitized value.
-        """
+        """Recursively sanitize data structure or primitive value."""
         if not self.config.enabled:
             return value
 
@@ -165,15 +181,7 @@ class DataSanitizer:
         return val
 
     def sanitize_string(self, text: str, key_name: str = "") -> str:
-        """Apply regex sanitization to string.
-
-        Args:
-            text: Input string.
-            key_name: Context key name.
-
-        Returns:
-            Sanitized string.
-        """
+        """Apply regex sanitization to string."""
         if not text:
             return text
 
@@ -233,11 +241,11 @@ class DataSanitizer:
         ]
         return any(kw in k for kw in sensitive_keywords)
 
-    def get_report(self) -> dict[str, Any]:
+    @property
+    def report(self) -> SanitizationReport:
         """Generate sanitization report summary."""
-        total_removed = sum(self.stats.values())
-        return {
-            "enabled": self.config.enabled,
-            "total_values_redacted": total_removed,
-            "categories": self.stats,
-        }
+        return SanitizationReport(enabled=self.config.enabled, categories=self.stats)
+
+    def get_report(self) -> dict[str, Any]:
+        """Generate sanitization report dictionary."""
+        return self.report.to_dict()

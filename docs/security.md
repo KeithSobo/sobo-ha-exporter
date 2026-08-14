@@ -1,20 +1,9 @@
-# Security Principles & Guidelines
+# Security & Privacy Principles
 
-`sobo-ha-exporter` adheres to zero-trust design for exported Home Assistant metadata.
+## Core Security Rules
 
-## Core Safeguards
-
-1. **Read-Only Configuration Mount**: Home Assistant configuration is mounted into the container as `read_only`. The add-on cannot alter live HA files under any circumstances.
-2. **Exclusion Rules**:
-   - `secrets.yaml` is hard-blocked and strictly excluded from collection.
-   - `.storage/`, `.cloud/`, `.auth`, `*.db`, `*.log`, `backups/` and temporary runtime files are strictly excluded.
-3. **Redaction & Sanitization**:
-   - High-precision regex pattern matchers redact GPS coordinates, MAC addresses, webhook IDs, credentials in URLs, and user IDs.
-   - Live entity state attribute values (such as exact sensor values) are stripped by default, retaining schema and metadata.
-4. **Secret Scanner Pre-Commit Gate**:
-   - Prior to staging and committing files to Git, the application performs a static secret scan over all output files.
-   - If an API key, private key, token, or high-entropy string is detected with high confidence, the commit process is aborted and logged to `/data/status/status.json`.
-5. **SSH Deploy Key Scope**:
-   - Authentication is strictly limited to an ED25519 repository deploy key pair generated in `/data/ssh/id_ed25519`.
-   - Host key verification is mandatorily enforced against GitHub's known host keys (`known_hosts`). Strict host key checking is never disabled.
-   - Private keys are never output to logs or exported.
+1. **Read-Only Home Assistant Access**: `/homeassistant` is mounted `read_only: true`. The add-on never modifies Home Assistant configuration files or SQLite databases.
+2. **Fail-Closed Secret Scanner**: All staging content is statically scanned before commit. Real secrets, private keys, API tokens, or high-entropy credentials halt export execution immediately.
+3. **No Credential Persistence in Status/UI**: The Ingress web interface and `/data/status/` manifests contain safe diagnostic metadata only (`relative_path`, `rule_name`, `line_number`, `size_bytes`). Matched secret strings, file contents, passwords, and private SSH keys are never written to status files or exposed via API.
+4. **Deploy Key Scoping**: Auto-generated ED25519 deploy key pair (`/data/ssh/id_ed25519`) is scoped strictly to the target GitHub repository.
+5. **Ingress Authentication**: Web UI endpoints are exposed internally on port `8099` behind Home Assistant Supervisor ingress authentication. No unauthenticated external ports are exposed.

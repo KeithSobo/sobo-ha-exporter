@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sobo HA Exporter Dashboard</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="app-container">
+      <header class="app-header">
+        <div class="header-brand">
+          <svg class="header-icon" viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
+            <path
+              d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-2.33 4.67-3.77 7-3.77s7 1.44 7 3.77V19z"
+            />
+          </svg>
+          <div>
+            <h1>Sobo HA Exporter</h1>
+            <span class="version-tag" id="app-version">v0.2.0</span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <span class="status-badge status-idle" id="status-badge">Loading...</span>
+          <button id="btn-refresh" class="btn btn-secondary">Refresh</button>
+          <button id="btn-run-export" class="btn btn-primary">Run Export Now</button>
+        </div>
+      </header>
+
+      <nav class="tab-nav">
+        <button class="tab-btn active" data-tab="tab-overview">Overview</button>
+        <button class="tab-btn" data-tab="tab-preview">Export Preview</button>
+        <button class="tab-btn" data-tab="tab-diagnostics">Diagnostics</button>
+        <button class="tab-btn" data-tab="tab-output">Generated Output</button>
+        <button class="tab-btn" data-tab="tab-setup">Setup & SSH Key</button>
+      </nav>
+
+      <main class="tab-content">
+        <!-- 1. OVERVIEW -->
+        <section id="tab-overview" class="tab-pane active">
+          <div class="grid-2">
+            <div class="card">
+              <h2>Status & Schedule</h2>
+              <table class="data-table">
+                <tr>
+                  <th>Current Status</th>
+                  <td id="ov-status">-</td>
+                </tr>
+                <tr>
+                  <th>Last Attempt</th>
+                  <td id="ov-last-attempt">-</td>
+                </tr>
+                <tr>
+                  <th>Last Successful Export</th>
+                  <td id="ov-last-success">-</td>
+                </tr>
+                <tr>
+                  <th>Last Commit</th>
+                  <td id="ov-last-commit">-</td>
+                </tr>
+                <tr>
+                  <th>Next Scheduled Run</th>
+                  <td id="ov-next-run">-</td>
+                </tr>
+                <tr>
+                  <th>Destination Repository</th>
+                  <td id="ov-repo">-</td>
+                </tr>
+                <tr>
+                  <th>Branch</th>
+                  <td id="ov-branch">-</td>
+                </tr>
+                <tr>
+                  <th>Schedule</th>
+                  <td id="ov-schedule">-</td>
+                </tr>
+                <tr>
+                  <th>Secret Scan Status</th>
+                  <td id="ov-secret-scan">-</td>
+                </tr>
+                <tr>
+                  <th>Git Connection</th>
+                  <td id="ov-git-conn">-</td>
+                </tr>
+              </table>
+            </div>
+
+            <div class="card">
+              <h2>Inventory Summary</h2>
+              <div class="stat-grid" id="inventory-stats">
+                <div class="stat-box">
+                  <span class="stat-num" id="cnt-entities">0</span
+                  ><span class="stat-label">Entities</span>
+                </div>
+                <div class="stat-box">
+                  <span class="stat-num" id="cnt-devices">0</span
+                  ><span class="stat-label">Devices</span>
+                </div>
+                <div class="stat-box">
+                  <span class="stat-num" id="cnt-areas">0</span
+                  ><span class="stat-label">Areas</span>
+                </div>
+                <div class="stat-box">
+                  <span class="stat-num" id="cnt-labels">0</span
+                  ><span class="stat-label">Labels</span>
+                </div>
+                <div class="stat-box">
+                  <span class="stat-num" id="cnt-integrations">0</span
+                  ><span class="stat-label">Integrations</span>
+                </div>
+                <div class="stat-box">
+                  <span class="stat-num" id="cnt-automations">0</span
+                  ><span class="stat-label">Automations</span>
+                </div>
+                <div class="stat-box">
+                  <span class="stat-num" id="cnt-scripts">0</span
+                  ><span class="stat-label">Scripts</span>
+                </div>
+                <div class="stat-box">
+                  <span class="stat-num" id="cnt-helpers">0</span
+                  ><span class="stat-label">Helpers</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" id="card-last-error" style="display: none">
+            <h2 class="text-error">Last Error</h2>
+            <pre class="code-block text-error" id="txt-last-error"></pre>
+          </div>
+        </section>
+
+        <!-- 2. EXPORT PREVIEW -->
+        <section id="tab-preview" class="tab-pane">
+          <div class="card">
+            <h2>Latest Export Preview</h2>
+            <div class="summary-bar" id="preview-summary">Loading preview manifest...</div>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Status</th>
+                  <th>Staged Files</th>
+                  <th>Total Size</th>
+                </tr>
+              </thead>
+              <tbody id="tbl-preview-categories"></tbody>
+            </table>
+
+            <h3>Staged Relative Paths</h3>
+            <div class="file-tree-container" id="tree-preview-files">Loading file list...</div>
+          </div>
+        </section>
+
+        <!-- 3. DIAGNOSTICS -->
+        <section id="tab-diagnostics" class="tab-pane">
+          <div class="card">
+            <div class="card-header-flex">
+              <h2>Secret Scanner Diagnostics</h2>
+              <a
+                id="btn-download-diag"
+                class="btn btn-secondary"
+                href="api/diagnostics/download"
+                download="failed-export-manifest.json"
+                >Download Diagnostic Manifest</a
+              >
+            </div>
+
+            <div id="diag-status-container" class="diag-banner">
+              Scanning result status loading...
+            </div>
+
+            <div id="diag-findings-wrapper" style="display: none">
+              <h3>Findings (Safe Diagnostic Metadata Only)</h3>
+              <p class="text-muted">No secret values or file contents are recorded or exposed.</p>
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>File Path</th>
+                    <th>Rule Name</th>
+                    <th>Line</th>
+                    <th>Size</th>
+                  </tr>
+                </thead>
+                <tbody id="tbl-diag-findings"></tbody>
+              </table>
+              <div
+                id="diag-omitted-msg"
+                class="text-muted text-center"
+                style="margin-top: 12px; display: none"
+              ></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 4. GENERATED OUTPUT -->
+        <section id="tab-output" class="tab-pane">
+          <div class="card">
+            <h2>Last Successful Export Structure</h2>
+            <div class="summary-bar" id="output-summary">Loading output metadata...</div>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Managed Directory</th>
+                  <th>File Count</th>
+                  <th>Total Size</th>
+                </tr>
+              </thead>
+              <tbody id="tbl-output-dirs"></tbody>
+            </table>
+
+            <h3>Exported Relative File Paths</h3>
+            <div class="file-tree-container" id="tree-output-files">Loading file tree...</div>
+          </div>
+        </section>
+
+        <!-- 5. SETUP -->
+        <section id="tab-setup" class="tab-pane">
+          <div class="grid-2">
+            <div class="card">
+              <h2>GitHub Deploy Key</h2>
+              <p>
+                Add this ED25519 public deploy key to your target GitHub repository under
+                <strong>Settings &rarr; Deploy keys &rarr; Add deploy key</strong> with
+                <strong>Allow write access</strong> checked.
+              </p>
+              <textarea id="txt-deploy-key" class="code-box" readonly>
+Loading deploy key...</textarea>
+              <div class="action-bar">
+                <button id="btn-copy-key" class="btn btn-secondary">Copy Deploy Key</button>
+                <button id="btn-test-git" class="btn btn-primary">Test GitHub Connection</button>
+              </div>
+              <div id="git-test-result" class="diag-banner" style="display: none"></div>
+            </div>
+
+            <div class="card">
+              <h2>Configuration Details</h2>
+              <table class="data-table">
+                <tr>
+                  <th>Target Repository</th>
+                  <td id="setup-repo">-</td>
+                </tr>
+                <tr>
+                  <th>Branch</th>
+                  <td id="setup-branch">-</td>
+                </tr>
+                <tr>
+                  <th>Connection Status</th>
+                  <td id="setup-conn-status">-</td>
+                </tr>
+              </table>
+
+              <h3>GitHub Setup Instructions</h3>
+              <ol class="setup-steps">
+                <li>Create a private GitHub repository for reference export storage.</li>
+                <li>Copy the public deploy key shown on the left.</li>
+                <li>
+                  Open GitHub repository <strong>Settings</strong> &rarr;
+                  <strong>Deploy keys</strong> &rarr; <strong>Add deploy key</strong>.
+                </li>
+                <li>Paste the key, check <strong>Allow write access</strong>, and save.</li>
+                <li>
+                  Click <strong>Test GitHub Connection</strong> above to verify SSH authentication.
+                </li>
+              </ol>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

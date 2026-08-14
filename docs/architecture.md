@@ -1,56 +1,23 @@
-# Architecture Overview
+# Architecture Specification
 
-`sobo-ha-exporter` is designed as a secure, containerized Home Assistant OS Add-on.
+## Overview
 
-## Data Flow Pipeline
+`sobo-ha-exporter` operates as a read-only one-way export add-on for Home Assistant OS. It collects entity, device, area, label, integration, automation, script, and helper configurations, normalizes and sanitizes the data, runs static secret scanning, and pushes the generated reference repository to a user-configured private GitHub SSH repository.
 
 ```text
-+-------------------------------+
-|  Home Assistant OS Environment|
-| - Supervisor API / WebSocket  |
-| - Read-Only /config           |
-+---------------+---------------+
-                |
-                v
-+---------------+---------------+
-|       Collectors Module       |
-| - Entities, Devices, Areas    |
-| - Labels, Integrations        |
-| - Automations & Config        |
-+---------------+---------------+
-                |
-                v
-+---------------+---------------+
-|     Security & Sanitizer      |
-| - Coordinate Redaction        |
-| - MAC / IP / User Redaction   |
-| - Secret Pattern Scanner      |
-+---------------+---------------+
-                |
-                v
-+---------------+---------------+
-|       Exporter Engine         |
-| - Deterministic JSON          |
-| - Markdown Summaries          |
-| - Relationship Mapping        |
-+---------------+---------------+
-                |
-                v
-+---------------+---------------+
-|    Git & Deploy Key Engine    |
-| - ED25519 SSH Auth            |
-| - Change Diffing & Idempotency|
-| - Commit & Push to GitHub     |
-+-------------------------------+
+Home Assistant OS (Read-Only /homeassistant & API)
+          ↓
+  sobo-ha-exporter
+          ├─► Status Manager & Ingress UI (Port 8099)
+          ├─► Data Sanitizer & Secret Scanner
+          └─► SSH Deploy Key Authentication
+          ↓
+Private GitHub Reference Repository
 ```
 
-## Component Roles
+## Runtime & Web Server Architecture
 
-- **`app.config`**: Validates `/data/options.json` schema and establishes conservative defaults.
-- **`app.ha_client`**: Connects via WebSocket or REST API using `SUPERVISOR_TOKEN` to retrieve state, registry details, and relationships.
-- **`app.collectors`**: Standardizes domain models into decoupled objects (Entity, Device, Area, Label).
-- **`app.security.sanitizer`**: Applies sanitization rules iteratively across exported dictionaries and text files.
-- **`app.security.secret_scanner`**: Evaluates final staged export files for potential secret patterns prior to commit.
-- **`app.exporters`**: Generates stable, deterministic output files.
-- **`app.github.deploy_key`**: Manages SSH ED25519 key generation in persistent `/data/ssh/`.
-- **`app.github.git_client`**: Handles git clone, fetch, diff, commit, and push operations cleanly.
+- **Main Application**: Daemon loop managing daily export execution and scheduling (`app/main.py`).
+- **Ingress Web Server**: Multi-threaded Python HTTP server running on internal port `8099` (`app/web_server.py`).
+- **Status Persistence**: Atomic JSON metadata writing under `/data/status/` (`status.json`, `export-preview.json`, `failed-export-manifest.json`, `generated-output.json`).
+- **Security Scoping**: Mounted `/homeassistant` directory is strictly read-only. Ingress endpoints expose pre-sanitized metadata only.
