@@ -50,6 +50,7 @@ ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... sobo-ha-exporter
 ```
 
 ### Steps on GitHub:
+
 1. Open your destination private GitHub repository.
 2. Go to **Settings** -> **Deploy keys** -> **Add deploy key**.
 3. Paste the public key displayed in the logs.

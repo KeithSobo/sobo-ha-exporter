@@ -20,12 +20,14 @@ sobo-ha-exporter/
 ## Local Development Setup
 
 1. **Install Python dependencies:**
+
    ```bash
    pip install -r sobo-ha-exporter/requirements.txt
    pip install pytest pytest-cov ruff mypy types-PyYAML types-requests pre-commit
    ```
 
 2. **Install Node.js dependencies (for Prettier formatting):**
+
    ```bash
    npm install
    ```
@@ -39,17 +41,17 @@ sobo-ha-exporter/
 
 We provide standard `make` targets for quality checks and testing:
 
-* `make install-dev`: Install local python and node development tools.
-* `make format`: Format code with Ruff and Prettier.
-* `make format-check`: Verify formatting without making changes.
-* `make lint`: Run Ruff, yamllint, markdownlint, and shellcheck.
-* `make type-check`: Run Mypy type checker.
-* `make unit-test`: Execute unit tests.
-* `make integration-test`: Execute local integration tests.
-* `make test`: Run all tests.
-* `make coverage`: Run test suite with coverage enforcement (minimum 80%).
-* `make build`: Build local Docker image.
-* `make check`: Aggregate check command expected before committing.
+- `make install-dev`: Install local python and node development tools.
+- `make format`: Format code with Ruff and Prettier.
+- `make format-check`: Verify formatting without making changes.
+- `make lint`: Run Ruff, yamllint, markdownlint, and shellcheck.
+- `make type-check`: Run Mypy type checker.
+- `make unit-test`: Execute unit tests.
+- `make integration-test`: Execute local integration tests.
+- `make test`: Run all tests.
+- `make coverage`: Run test suite with coverage enforcement (minimum 80%).
+- `make build`: Build local Docker image.
+- `make check`: Aggregate check command expected before committing.
 
 ## Guidelines
 
