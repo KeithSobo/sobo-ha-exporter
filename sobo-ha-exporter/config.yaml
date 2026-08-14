@@ -1,0 +1,80 @@
+name: "Sobo HA Exporter"
+version: "0.1.0"
+slug: "sobo-ha-exporter"
+description: "Exports a sanitized reference model of your Home Assistant setup to GitHub for AI context"
+url: "https://github.com/KeithSobo/sobo-ha-exporter"
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+  - i386
+startup: application
+boot: auto
+homeassistant_api: true
+hassio_api: true
+map:
+  - type: homeassistant_config
+    read_only: true
+options:
+  repository: "git@github.com:USERNAME/ha-reference.git"
+  branch: "main"
+  schedule:
+    enabled: true
+    time: "03:00"
+  export:
+    entities: true
+    devices: true
+    areas: true
+    labels: true
+    integrations: true
+    relationships: true
+    automations: true
+    configuration_files: false
+    dashboards: false
+    custom_components: false
+    www: false
+  sanitization:
+    enabled: true
+    remove_coordinates: true
+    remove_ip_addresses: false
+    remove_mac_addresses: true
+    remove_user_ids: true
+    remove_webhook_ids: true
+    remove_tokens: true
+    remove_urls_with_credentials: true
+  git:
+    author_name: "Sobo HA Exporter"
+    author_email: "sobo-ha-exporter@localhost"
+    commit_message: "Update Home Assistant reference export"
+schema:
+  repository: str
+  branch: str
+  schedule:
+    enabled: bool
+    time: str
+  export:
+    entities: bool
+    devices: bool
+    areas: bool
+    labels: bool
+    integrations: bool
+    relationships: bool
+    automations: bool
+    configuration_files: bool
+    dashboards: bool
+    custom_components: bool
+    www: bool
+  sanitization:
+    enabled: bool
+    remove_coordinates: bool
+    remove_ip_addresses: bool
+    remove_mac_addresses: bool
+    remove_user_ids: bool
+    remove_webhook_ids: bool
+    remove_tokens: bool
+    remove_urls_with_credentials: bool
+  git:
+    author_name: str
+    author_email: str
+    commit_message: str

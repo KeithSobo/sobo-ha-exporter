@@ -1,0 +1,16 @@
+# Python files (handled by Ruff)
+*.py
+
+# Git & Build artifacts
+.git/
+.venv/
+venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+node_modules/
+dist/
+build/
+/data/

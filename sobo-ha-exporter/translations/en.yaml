@@ -1,0 +1,19 @@
+configuration:
+  repository:
+    name: "Destination Repository URL"
+    description: "Private GitHub SSH repository URL (e.g., git@github.com:username/ha-reference.git)"
+  branch:
+    name: "Git Branch"
+    description: "Target branch in destination repository"
+  schedule:
+    name: "Schedule Settings"
+    description: "Enable automatic daily scheduled export"
+  export:
+    name: "Export Categories"
+    description: "Select which Home Assistant metadata components to include"
+  sanitization:
+    name: "Sanitization Settings"
+    description: "Enable security redaction for sensitive fields"
+  git:
+    name: "Git Author Settings"
+    description: "Commit author name, email, and commit message"

@@ -1,0 +1,23 @@
+- id: "1600000000001"
+  alias: "Basement Motion Light"
+  description: "Turn on basement light when motion is detected"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.basement_occupancy
+      to: "on"
+  condition: []
+  action:
+    - service: light.turn_on
+      target:
+        entity_id: light.basement_ceiling
+- id: "1600000000002"
+  alias: "Evening Climate Adjustment"
+  trigger:
+    - platform: time
+      at: "18:00:00"
+  action:
+    - service: climate.set_temperature
+      target:
+        entity_id: climate.main_thermostat
+      data:
+        temperature: 68

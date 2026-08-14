@@ -1,0 +1,13 @@
+{
+  "name": "sobo-ha-exporter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Home Assistant OS add-on to export a sanitized reference model of your HA setup to GitHub",
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "^3.2.5"
+  }
+}
